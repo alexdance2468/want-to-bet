@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Fake Bets</title>
+<title>Want to Bet</title>
 <style>
   body{font-family:system-ui,sans-serif;background:#f4f5f7;margin:0;color:#222}
   main{max-width:640px;margin:0 auto;padding:16px}
@@ -13,45 +13,36 @@
   button{background:#2563eb;color:#fff;border:0;cursor:pointer}
   button.grey{background:#6b7280}
   .row{display:flex;gap:8px}
+  .row button{flex-shrink:0}
   .small{color:#666;font-size:.9em}
-  header{display:flex;justify-content:space-between;align-items:center}
+  h1{margin-bottom:0}
+  .sub{color:#666;margin-bottom:12px}
 </style>
 </head>
 <body>
 <main>
-  <h1>🎲 Fake Bets</h1>
+  <h1>Want to Bet</h1>
+  <div class="sub">by Alex Dance</div>
 
-  <div id="auth" class="card" hidden>
-    <input id="email" type="email" placeholder="Email">
-    <input id="pass" type="password" placeholder="Password (6+ characters)">
-    <input id="uname" placeholder="Username (only needed to sign up)">
+  <div class="card">
+    <b>Your name</b>
+    <input id="name" placeholder="Type your name (used for offers and bets)" maxlength="30">
+  </div>
+
+  <div class="card">
+    <b>Make an offer</b>
+    <input id="stmt" placeholder="I say that... (e.g. It will rain in Sydney on Saturday)" maxlength="200">
     <div class="row">
-      <button onclick="login()">Log in</button>
-      <button class="grey" onclick="signup()">Sign up</button>
+      <input id="odds" type="number" min="0.1" step="0.1" placeholder="Odds (2 = pay 2 per 1 bet)">
+      <input id="max" type="number" min="1" placeholder="Most you'll pay out">
     </div>
+    <div class="small">Odds 2 means: if someone bets 1 and you lose, you pay out 2. "Most you'll pay out" is your total limit across everyone who bets.</div>
+    <button onclick="makeOffer()">Post offer</button>
   </div>
 
-  <div id="app" hidden>
-    <header>
-      <div><b id="who"></b> · net <b id="net"></b> coins</div>
-      <button class="grey" onclick="sb.auth.signOut()">Log out</button>
-    </header>
-
-    <div class="card">
-      <b>Make an offer</b>
-      <input id="stmt" placeholder="I say that... (e.g. It will rain in Sydney on Saturday)">
-      <div class="row">
-        <input id="stake" type="number" min="1" placeholder="Your stake (coins)">
-        <input id="odds" type="number" min="0.1" step="0.1" placeholder="Odds (2 = 2:1)">
-      </div>
-      <div class="small">At 2:1, the taker risks half your stake to win your full stake.</div>
-      <button onclick="makeBet()">Post offer</button>
-    </div>
-
-    <h2>Open offers</h2><div id="open"></div>
-    <h2>My bets</h2><div id="mine"></div>
-    <h2>Leaderboard</h2><div id="board" class="card"></div>
-  </div>
+  <h2>Open offers</h2><div id="open"></div>
+  <h2>Settled bets</h2><div id="done"></div>
+  <h2>Leaderboard</h2><div id="board" class="card"></div>
 </main>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -59,86 +50,105 @@
 const sb = supabase.createClient('https://gsmeyqbwjfnxnigaharo.supabase.co', 'sb_publishable_l8W85pYer3OiYE5acsCRhQ_bCcTWO9z');
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-let me = null;
+const store = {
+  get(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
+};
 
-sb.auth.onAuthStateChange((_, session) => {
-  me = session?.user || null;
-  setTimeout(() => {
-    $('auth').hidden = !!me;
-    $('app').hidden = !me;
-    if (me) load();
-  }, 0);
-});
-
-async function login() {
-  const { error } = await sb.auth.signInWithPassword({ email: $('email').value, password: $('pass').value });
-  if (error) alert(error.message);
+let token = store.get('wtb_token', null);
+if (!token) {
+  token = Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('');
+  store.set('wtb_token', token);
 }
-async function signup() {
-  const username = $('uname').value.trim();
-  if (!username) return alert('Pick a username');
-  const { error } = await sb.auth.signUp({ email: $('email').value, password: $('pass').value, options: { data: { username } } });
-  if (error) alert(error.message);
+let mine = store.get('wtb_mine', []);
+$('name').value = store.get('wtb_name', '');
+$('name').onchange = () => store.set('wtb_name', $('name').value.trim());
+
+function myName() {
+  const n = $('name').value.trim();
+  if (!n) { alert('Type your name at the top first'); return null; }
+  store.set('wtb_name', n);
+  return n;
 }
 
-async function makeBet() {
-  const { error } = await sb.rpc('make_bet', {
-    p_statement: $('stmt').value, p_stake: parseInt($('stake').value), p_odds: parseFloat($('odds').value)
+async function makeOffer() {
+  const name = myName(); if (!name) return;
+  const odds = parseFloat($('odds').value), max = parseInt($('max').value);
+  if (!$('stmt').value.trim()) return alert('Write what you are betting on');
+  if (!(odds > 0) || !(max > 0)) return alert('Enter the odds and the most you will pay out');
+  const { data, error } = await sb.rpc('create_offer', {
+    p_name: name, p_statement: $('stmt').value, p_odds: odds, p_max: max, p_token: token
   });
   if (error) return alert(error.message);
-  $('stmt').value = ''; $('stake').value = ''; $('odds').value = '';
+  mine.push(data); store.set('wtb_mine', mine);
+  $('stmt').value = ''; $('odds').value = ''; $('max').value = '';
   load();
 }
 
-async function act(fn, id) {
-  const { error } = await sb.rpc(fn, { p_id: id });
+async function take(id) {
+  const name = myName(); if (!name) return;
+  const stake = parseInt($('s' + id).value);
+  if (!(stake > 0)) return alert('Enter how much you want to bet');
+  const { error } = await sb.rpc('take_offer', { p_id: id, p_name: name, p_stake: stake });
+  if (error) alert(error.message);
+  load();
+}
+
+async function owner(fn, id, extra = {}) {
+  const { error } = await sb.rpc(fn, { p_id: id, p_token: token, ...extra });
   if (error) alert(error.message);
   load();
 }
 
 async function load() {
-  const [bets, profs] = await Promise.all([
+  const [b, t] = await Promise.all([
     sb.from('bets').select('*').order('id', { ascending: false }),
-    sb.from('profiles').select('id,username')
+    sb.from('takes').select('*').order('id')
   ]);
-  const name = Object.fromEntries(profs.data.map(p => [p.id, p.username]));
-  const all = bets.data;
+  if (b.error || t.error) return;
+  const bets = b.data, takes = t.data;
 
-  const net = Object.fromEntries(profs.data.map(p => [p.id, 0]));
-  all.filter(b => b.status === 'settled').forEach(b => {
-    const loser = b.winner === b.creator ? b.taker : b.creator;
-    net[b.winner] += b.winner === b.creator ? b.taker_stake : b.creator_stake;
-    net[loser] -= b.winner === b.creator ? b.taker_stake : b.creator_stake;
-  });
+  const byBet = {};
+  takes.forEach(k => (byBet[k.bet_id] = byBet[k.bet_id] || []).push(k));
 
-  $('who').textContent = name[me.id];
-  $('net').textContent = (net[me.id] > 0 ? '+' : '') + net[me.id];
-  $('board').innerHTML = Object.entries(net).sort((a, b) => b[1] - a[1])
-    .map(([id, n]) => `<div>${esc(name[id])}: ${n > 0 ? '+' : ''}${n}</div>`).join('');
+  const net = {}, label = {};
+  const add = (n, v) => { const k = n.toLowerCase(); label[k] = label[k] || n; net[k] = (net[k] || 0) + v; };
+  bets.filter(x => x.status === 'settled').forEach(x => (byBet[x.id] || []).forEach(k => {
+    if (x.creator_won) { add(x.creator, k.stake); add(k.taker, -k.stake); }
+    else { add(x.creator, -k.payout); add(k.taker, k.payout); }
+  }));
 
-  const card = b => {
-    const mine = b.creator === me.id;
-    let buttons = '', status = '';
-    if (b.status === 'open') {
-      buttons = mine
-        ? `<button class="grey" onclick="act('cancel_bet',${b.id})">Cancel</button>`
-        : `<button onclick="act('take_bet',${b.id})">Take it: risk ${b.taker_stake} to win ${b.creator_stake}</button>`;
-    } else if (b.status === 'taken') {
-      status = `Taken by ${esc(name[b.taker])}`;
-      buttons = `<button class="grey" onclick="if(confirm('Admit you lost?'))act('concede_bet',${b.id})">I lost</button>`;
-    } else if (b.status === 'settled') {
-      status = `Settled: ${esc(name[b.winner])} won ${b.winner === b.creator ? b.taker_stake : b.creator_stake} coins`;
+  const card = x => {
+    const ts = byBet[x.id] || [];
+    const left = x.max_payout - ts.reduce((s, k) => s + k.payout, 0);
+    const maxStake = Math.floor(left / x.odds + 1e-9);
+    let h = `<div class="card"><b>${esc(x.creator)} says:</b> ${esc(x.statement)}
+      <div class="small">Pays ${Number(x.odds)} for every 1 bet · ${left} of ${x.max_payout} still available</div>`;
+    h += ts.map(k => `<div class="small">• ${esc(k.taker)} bet ${k.stake} to win ${k.payout}</div>`).join('');
+    if (x.status === 'open') {
+      h += maxStake >= 1
+        ? `<div class="row"><input id="s${x.id}" type="number" min="1" max="${maxStake}" placeholder="Your bet (up to ${maxStake})"><button onclick="take(${x.id})">Bet</button></div>`
+        : '<div class="small"><b>Fully taken</b></div>';
+      if (mine.includes(x.id)) {
+        h += ts.length
+          ? `<div class="row"><button onclick="if(confirm('Confirm: you WON this bet?'))owner('settle_offer',${x.id},{p_creator_won:true})">I won</button>
+             <button class="grey" onclick="if(confirm('Confirm: you LOST this bet?'))owner('settle_offer',${x.id},{p_creator_won:false})">I lost</button></div>`
+          : `<button class="grey" onclick="owner('cancel_offer',${x.id})">Cancel offer</button>`;
+      }
+    } else {
+      h += `<div class="small"><b>Result: ${esc(x.creator)} ${x.creator_won ? 'won' : 'lost'}</b></div>`;
     }
-    return `<div class="card"><b>${esc(name[b.creator])} says:</b> ${esc(b.statement)}
-      <div class="small">Creator risks ${b.creator_stake} · Taker risks ${b.taker_stake} (${(b.creator_stake / b.taker_stake).toFixed(2)}:1) ${status ? '· ' + status : ''}</div>
-      ${buttons}</div>`;
+    return h + '</div>';
   };
 
-  $('open').innerHTML = all.filter(b => b.status === 'open').map(card).join('') || '<p class="small">No open offers yet.</p>';
-  $('mine').innerHTML = all.filter(b => b.status !== 'cancelled' && b.status !== 'open' && (b.creator === me.id || b.taker === me.id)).map(card).join('') || '<p class="small">Nothing yet.</p>';
+  $('open').innerHTML = bets.filter(x => x.status === 'open').map(card).join('') || '<p class="small">No open offers yet. Make the first one!</p>';
+  $('done').innerHTML = bets.filter(x => x.status === 'settled').map(card).join('') || '<p class="small">Nothing settled yet.</p>';
+  $('board').innerHTML = Object.keys(net).sort((a, c) => net[c] - net[a])
+    .map(k => `<div>${esc(label[k])}: ${net[k] > 0 ? '+' : ''}${net[k]}</div>`).join('') || '<span class="small">No settled bets yet.</span>';
 }
 
-setInterval(() => { if (me) load(); }, 15000);
+setInterval(() => { if (document.activeElement.tagName !== 'INPUT') load(); }, 15000);
+load();
 </script>
 </body>
 </html>

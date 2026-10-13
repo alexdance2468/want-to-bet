@@ -313,3 +313,74 @@ function renderDetails() {
   const topics = new Map();
   bets.forEach(x => { const t = x.topic_id || x.id; if (!topics.has(t)) topics.set(t, []); topics.get(t).push(x); });
   const ids = [...topics.keys()];
+  $('topicSel').innerHTML = ids.map(t =>
+    `<option value="${t}">#${t} ${esc((byId[t] || topics.get(t)[0]).statement.slice(0, 60))}</option>`).join('');
+  if (!ids.includes(selTopic)) selTopic = ids[0];
+
+  if (!ids.length) {
+    $('odds2').innerHTML = '<p class="small">No bets yet.</p>';
+  } else {
+    $('topicSel').value = selTopic;
+    const offers = topics.get(selTopic).slice().sort((a, c) => a.id - c.id);
+    const W = 560, H = 170, P = 28, n = offers.length;
+    const vals = offers.map(o => Number(o.odds));
+    const hi = Math.max(...vals), lo = Math.min(...vals);
+    const X = i => n === 1 ? W / 2 : P + i * (W - 2 * P) / (n - 1);
+    const Y = v => hi === lo ? H / 2 : H - P - (v - lo) / (hi - lo) * (H - 2 * P);
+    const line = vals.map((v, i) => `${X(i)},${Y(v)}`).join(' ');
+    const dots = vals.map((v, i) =>
+      `<circle cx="${X(i)}" cy="${Y(v)}" r="4" fill="#2563eb"/><text x="${X(i)}" y="${Y(v) - 9}" font-size="12" text-anchor="middle" fill="#222">${v}</text>`).join('');
+    const status = o => o.status === 'settled' ? `Settled (${esc(o.creator)} ${o.creator_won ? 'won' : 'lost'})`
+      : o.status === 'cancelled' ? 'Cancelled' : 'Open';
+    $('odds2').innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto"><polyline points="${line}" fill="none" stroke="#2563eb" stroke-width="2"/>${dots}</svg>
+      <div class="small">Each dot is an offer on this bet, oldest on the left. Higher odds pay more.</div>
+      <div class="scroll"><table><tr><th>Posted</th><th>By</th><th>Odds</th><th>Max payout</th><th>Taken</th><th>Status</th></tr>
+      ${offers.map(o => `<tr><td>${new Date(o.created_at).toLocaleString()}</td><td>${esc(o.creator)}</td><td>${Number(o.odds)}</td><td>${o.max_payout}</td><td>${o.max_payout - leftOf(o)}</td><td>${status(o)}</td></tr>`).join('')}</table></div>`;
+  }
+
+  // Head to head
+  const names = {};
+  bets.forEach(x => { const k = x.creator.toLowerCase(); names[k] = names[k] || x.creator; });
+  takes.forEach(x => { const k = x.taker.toLowerCase(); names[k] = names[k] || x.taker; });
+  const keys = Object.keys(names).sort();
+  const me = String(store.get('wtb_name', '') || '').toLowerCase();
+  if (!keys.includes(p1)) p1 = keys.includes(me) ? me : (keys[0] || '');
+  if (!keys.includes(p2) || p2 === p1) p2 = keys.find(n => n !== p1) || '';
+  const opts = keys.map(k => `<option value="${esc(k)}">${esc(names[k])}</option>`).join('');
+  $('p1').innerHTML = opts; $('p2').innerHTML = opts;
+  $('p1').value = p1; $('p2').value = p2;
+
+  if (!p2) { $('h2h').innerHTML = '<p class="small">Needs at least two people.</p>'; return; }
+
+  let tot = 0, w1 = 0, w2 = 0;
+  const rows = [];
+  takes.forEach(k => {
+    const x = byId[k.bet_id]; if (!x) return;
+    const c = x.creator.toLowerCase(), t = k.taker.toLowerCase();
+    if (!((c === p1 && t === p2) || (c === p2 && t === p1))) return;
+    let result = 'Pending';
+    if (x.status === 'settled') {
+      const cNet = x.creator_won ? k.stake : -k.payout;
+      const v1 = c === p1 ? cNet : -cNet;
+      tot += v1;
+      if (v1 > 0) w1++; else w2++;
+      result = `${esc(x.creator_won ? x.creator : k.taker)} won ${x.creator_won ? k.stake : k.payout}`;
+    }
+    rows.push(`<tr><td>${esc(x.statement)}</td><td>${esc(x.creator)}</td><td>${Number(x.odds)}</td><td>${k.stake}</td><td>${result}</td></tr>`);
+  });
+
+  $('h2h').innerHTML = rows.length
+    ? `<p><b>${esc(names[p1])}</b> is <b>${tot > 0 ? '+' : ''}${tot}</b> against <b>${esc(names[p2])}</b> on settled bets (${esc(names[p1])} won ${w1}, ${esc(names[p2])} won ${w2}).</p>
+       <div class="scroll"><table><tr><th>Bet</th><th>Offered by</th><th>Odds</th><th>Taker's bet</th><th>Result</th></tr>${rows.join('')}</table></div>`
+    : '<p class="small">No bets between these two yet.</p>';
+}
+
+setInterval(() => {
+  const a = document.activeElement.tagName;
+  if (a !== 'INPUT' && a !== 'SELECT' && !document.querySelector('details[open]')) load();
+}, 15000);
+route();
+load();
+</script>
+</body>
+</html>

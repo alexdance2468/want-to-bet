@@ -18,13 +18,17 @@
   .offer{border-top:1px solid #eee;margin-top:8px;padding-top:6px}
   h1{margin-bottom:0}
   .sub{color:#666;margin-bottom:12px}
-  nav{display:flex;gap:8px;margin-bottom:8px}
+  nav{display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap}
   nav a{padding:8px 16px;border-radius:6px;background:#e5e7eb;color:#222;text-decoration:none}
   nav a.on{background:#2563eb;color:#fff}
   summary{cursor:pointer;color:#2563eb;margin:8px 0 4px}
   table{width:100%;border-collapse:collapse;font-size:.9em}
   th,td{text-align:left;padding:5px 6px;border-bottom:1px solid #eee}
   .scroll{overflow-x:auto}
+  .card h3{margin:0 0 6px}
+  .card p{margin:6px 0}
+  .card ul,.card ol{margin:6px 0;padding-left:22px}
+  .eg{background:#eef4ff;border-radius:8px;padding:10px;margin:8px 0}
 </style>
 </head>
 <body>
@@ -32,8 +36,9 @@
   <h1>Want to Bet</h1>
   <div class="sub">by Alex Dance</div>
   <nav>
-    <a id="navHome" href="#home">Home</a>
-    <a id="navDet" href="#details">Details</a>
+    <a id="nav_home" href="#home">Home</a>
+    <a id="nav_details" href="#details">Details</a>
+    <a id="nav_explainer" href="#explainer">Explainer</a>
   </nav>
 
   <div id="home">
@@ -73,6 +78,75 @@
       <div id="h2h"></div>
     </div>
   </div>
+
+  <div id="explainer" hidden>
+    <h2>How Want to Bet works</h2>
+
+    <div class="card">
+      <h3>What is it?</h3>
+      <p>Want to Bet is a place to back your opinions with fake money. You say something will happen, choose the odds you're willing to offer, and other people decide whether to bet against you. No real money is involved, and there's no login.</p>
+    </div>
+
+    <div class="card">
+      <h3>1. Type your name</h3>
+      <p>On the Home page, type your name in the <b>Your name</b> box. This is the name shown on your offers and bets, and your browser remembers it for next time.</p>
+    </div>
+
+    <div class="card">
+      <h3>2. Make an offer</h3>
+      <p>Write what you're betting on, for example <i>"It will rain in Sydney on Saturday"</i>, then fill in two numbers:</p>
+      <ul>
+        <li><b>Odds:</b> how much you'll pay out for every 1 someone bets against you.</li>
+        <li><b>Most you'll pay out:</b> your total limit across everyone who bets.</li>
+      </ul>
+      <div class="eg">
+        <b>Example:</b> You offer odds of <b>2</b> with a most-you'll-pay-out of <b>100</b>.
+        <ul>
+          <li>Sam bets <b>10</b> against you. If you lose, you pay Sam <b>20</b>. If you win, Sam pays you <b>10</b>.</li>
+          <li>Up to <b>50</b> in total can be bet against you, because 50 &times; 2 = 100.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>3. Bet against an offer</h3>
+      <p>Find an offer you disagree with, type how much you want to bet (any amount up to what's left), and click <b>Bet</b>. Several people can each take a piece of the same offer until your limit is used up. You can't bet against your own offer.</p>
+    </div>
+
+    <div class="card">
+      <h3>4. Offer better odds</h3>
+      <p>Think you can do better? Click <b>Offer better odds</b> under any bet to post your own offer on the same statement. Your odds have to be higher than the best offer still available, because higher odds pay more to the person betting. Each offer has its own limit, and the best odds are shown first.</p>
+    </div>
+
+    <div class="card">
+      <h3>5. Settle the bet</h3>
+      <p>Once the outcome is known, the person who made the offer clicks <b>I won</b> or <b>I lost</b>. That decides the result for everyone who bet on that offer, and the leaderboard updates.</p>
+      <p>If nobody has bet on your offer yet, you can click <b>Cancel offer</b> instead.</p>
+    </div>
+
+    <div class="card">
+      <h3>The Details page</h3>
+      <ul>
+        <li><b>Odds over time:</b> pick a bet to see a chart and table of every offer made on it, oldest to newest.</li>
+        <li><b>Head to head:</b> pick two people to see every bet between them, who won each one, and who is ahead overall.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h3>The leaderboard</h3>
+      <p>Everyone's net winnings across settled bets. It starts at 0, goes up when you win, and can go below 0 when you lose. There's no wallet or starting balance.</p>
+    </div>
+
+    <div class="card">
+      <h3>Good to know</h3>
+      <ul>
+        <li><b>It runs on honesty.</b> The person who made the offer decides who won, so it works best among people who trust each other.</li>
+        <li><b>Names aren't locked.</b> Anyone can type any name, so use names your group recognises.</li>
+        <li><b>You settle from the same device.</b> Your offers are tied to the browser you posted them from. If you clear your browser data or switch devices, you can no longer settle or cancel them.</li>
+        <li><b>It's all fake.</b> The numbers are just for bragging rights.</li>
+      </ul>
+    </div>
+  </div>
 </main>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -106,12 +180,13 @@ function myName() {
 }
 
 function route() {
-  const d = location.hash === '#details';
-  $('home').hidden = d;
-  $('details').hidden = !d;
-  $('navHome').className = d ? '' : 'on';
-  $('navDet').className = d ? 'on' : '';
-  if (d) renderDetails();
+  const h = location.hash.slice(1);
+  const page = (h === 'details' || h === 'explainer') ? h : 'home';
+  ['home', 'details', 'explainer'].forEach(p => {
+    $(p).hidden = p !== page;
+    $('nav_' + p).className = p === page ? 'on' : '';
+  });
+  if (page === 'details') renderDetails();
 }
 window.onhashchange = route;
 
@@ -238,74 +313,3 @@ function renderDetails() {
   const topics = new Map();
   bets.forEach(x => { const t = x.topic_id || x.id; if (!topics.has(t)) topics.set(t, []); topics.get(t).push(x); });
   const ids = [...topics.keys()];
-  $('topicSel').innerHTML = ids.map(t =>
-    `<option value="${t}">#${t} ${esc((byId[t] || topics.get(t)[0]).statement.slice(0, 60))}</option>`).join('');
-  if (!ids.includes(selTopic)) selTopic = ids[0];
-
-  if (!ids.length) {
-    $('odds2').innerHTML = '<p class="small">No bets yet.</p>';
-  } else {
-    $('topicSel').value = selTopic;
-    const offers = topics.get(selTopic).slice().sort((a, c) => a.id - c.id);
-    const W = 560, H = 170, P = 28, n = offers.length;
-    const vals = offers.map(o => Number(o.odds));
-    const hi = Math.max(...vals), lo = Math.min(...vals);
-    const X = i => n === 1 ? W / 2 : P + i * (W - 2 * P) / (n - 1);
-    const Y = v => hi === lo ? H / 2 : H - P - (v - lo) / (hi - lo) * (H - 2 * P);
-    const line = vals.map((v, i) => `${X(i)},${Y(v)}`).join(' ');
-    const dots = vals.map((v, i) =>
-      `<circle cx="${X(i)}" cy="${Y(v)}" r="4" fill="#2563eb"/><text x="${X(i)}" y="${Y(v) - 9}" font-size="12" text-anchor="middle" fill="#222">${v}</text>`).join('');
-    const status = o => o.status === 'settled' ? `Settled (${esc(o.creator)} ${o.creator_won ? 'won' : 'lost'})`
-      : o.status === 'cancelled' ? 'Cancelled' : 'Open';
-    $('odds2').innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto"><polyline points="${line}" fill="none" stroke="#2563eb" stroke-width="2"/>${dots}</svg>
-      <div class="small">Each dot is an offer on this bet, oldest on the left. Higher odds pay more.</div>
-      <div class="scroll"><table><tr><th>Posted</th><th>By</th><th>Odds</th><th>Max payout</th><th>Taken</th><th>Status</th></tr>
-      ${offers.map(o => `<tr><td>${new Date(o.created_at).toLocaleString()}</td><td>${esc(o.creator)}</td><td>${Number(o.odds)}</td><td>${o.max_payout}</td><td>${o.max_payout - leftOf(o)}</td><td>${status(o)}</td></tr>`).join('')}</table></div>`;
-  }
-
-  // Head to head
-  const names = {};
-  bets.forEach(x => { const k = x.creator.toLowerCase(); names[k] = names[k] || x.creator; });
-  takes.forEach(x => { const k = x.taker.toLowerCase(); names[k] = names[k] || x.taker; });
-  const keys = Object.keys(names).sort();
-  const me = String(store.get('wtb_name', '') || '').toLowerCase();
-  if (!keys.includes(p1)) p1 = keys.includes(me) ? me : (keys[0] || '');
-  if (!keys.includes(p2) || p2 === p1) p2 = keys.find(n => n !== p1) || '';
-  const opts = keys.map(k => `<option value="${esc(k)}">${esc(names[k])}</option>`).join('');
-  $('p1').innerHTML = opts; $('p2').innerHTML = opts;
-  $('p1').value = p1; $('p2').value = p2;
-
-  if (!p2) { $('h2h').innerHTML = '<p class="small">Needs at least two people.</p>'; return; }
-
-  let tot = 0, w1 = 0, w2 = 0;
-  const rows = [];
-  takes.forEach(k => {
-    const x = byId[k.bet_id]; if (!x) return;
-    const c = x.creator.toLowerCase(), t = k.taker.toLowerCase();
-    if (!((c === p1 && t === p2) || (c === p2 && t === p1))) return;
-    let result = 'Pending';
-    if (x.status === 'settled') {
-      const cNet = x.creator_won ? k.stake : -k.payout;
-      const v1 = c === p1 ? cNet : -cNet;
-      tot += v1;
-      if (v1 > 0) w1++; else w2++;
-      result = `${esc(x.creator_won ? x.creator : k.taker)} won ${x.creator_won ? k.stake : k.payout}`;
-    }
-    rows.push(`<tr><td>${esc(x.statement)}</td><td>${esc(x.creator)}</td><td>${Number(x.odds)}</td><td>${k.stake}</td><td>${result}</td></tr>`);
-  });
-
-  $('h2h').innerHTML = rows.length
-    ? `<p><b>${esc(names[p1])}</b> is <b>${tot > 0 ? '+' : ''}${tot}</b> against <b>${esc(names[p2])}</b> on settled bets (${esc(names[p1])} won ${w1}, ${esc(names[p2])} won ${w2}).</p>
-       <div class="scroll"><table><tr><th>Bet</th><th>Offered by</th><th>Odds</th><th>Taker's bet</th><th>Result</th></tr>${rows.join('')}</table></div>`
-    : '<p class="small">No bets between these two yet.</p>';
-}
-
-setInterval(() => {
-  const a = document.activeElement.tagName;
-  if (a !== 'INPUT' && a !== 'SELECT' && !document.querySelector('details[open]')) load();
-}, 15000);
-route();
-load();
-</script>
-</body>
-</html>

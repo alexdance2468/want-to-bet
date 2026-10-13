@@ -8,41 +8,71 @@
   body{font-family:system-ui,sans-serif;background:#f4f5f7;margin:0;color:#222}
   main{max-width:640px;margin:0 auto;padding:16px}
   .card{background:#fff;border-radius:10px;padding:14px;margin:10px 0;box-shadow:0 1px 3px #0002}
-  input,button{font:inherit;padding:8px;margin:3px 0;border-radius:6px;border:1px solid #ccc}
-  input{width:100%;box-sizing:border-box}
+  input,select,button{font:inherit;padding:8px;margin:3px 0;border-radius:6px;border:1px solid #ccc}
+  input,select{width:100%;box-sizing:border-box;background:#fff}
   button{background:#2563eb;color:#fff;border:0;cursor:pointer}
   button.grey{background:#6b7280}
   .row{display:flex;gap:8px}
   .row button{flex-shrink:0}
   .small{color:#666;font-size:.9em}
+  .offer{border-top:1px solid #eee;margin-top:8px;padding-top:6px}
   h1{margin-bottom:0}
   .sub{color:#666;margin-bottom:12px}
+  nav{display:flex;gap:8px;margin-bottom:8px}
+  nav a{padding:8px 16px;border-radius:6px;background:#e5e7eb;color:#222;text-decoration:none}
+  nav a.on{background:#2563eb;color:#fff}
+  summary{cursor:pointer;color:#2563eb;margin:8px 0 4px}
+  table{width:100%;border-collapse:collapse;font-size:.9em}
+  th,td{text-align:left;padding:5px 6px;border-bottom:1px solid #eee}
+  .scroll{overflow-x:auto}
 </style>
 </head>
 <body>
 <main>
   <h1>Want to Bet</h1>
   <div class="sub">by Alex Dance</div>
+  <nav>
+    <a id="navHome" href="#home">Home</a>
+    <a id="navDet" href="#details">Details</a>
+  </nav>
 
-  <div class="card">
-    <b>Your name</b>
-    <input id="name" placeholder="Type your name (used for offers and bets)" maxlength="30">
-  </div>
-
-  <div class="card">
-    <b>Make an offer</b>
-    <input id="stmt" placeholder="I say that... (e.g. It will rain in Sydney on Saturday)" maxlength="200">
-    <div class="row">
-      <input id="odds" type="number" min="0.1" step="0.1" placeholder="Odds (2 = pay 2 per 1 bet)">
-      <input id="max" type="number" min="1" placeholder="Most you'll pay out">
+  <div id="home">
+    <div class="card">
+      <b>Your name</b>
+      <input id="name" placeholder="Type your name (used for offers and bets)" maxlength="30">
     </div>
-    <div class="small">Odds 2 means: if someone bets 1 and you lose, you pay out 2. "Most you'll pay out" is your total limit across everyone who bets.</div>
-    <button onclick="makeOffer()">Post offer</button>
+
+    <div class="card">
+      <b>Make an offer</b>
+      <input id="stmt" placeholder="I say that... (e.g. It will rain in Sydney on Saturday)" maxlength="200">
+      <div class="row">
+        <input id="odds" type="number" min="0.1" step="0.1" placeholder="Odds (2 = pay 2 per 1 bet)">
+        <input id="max" type="number" min="1" placeholder="Most you'll pay out">
+      </div>
+      <div class="small">Odds 2 means: if someone bets 1 and you lose, you pay out 2. "Most you'll pay out" is your total limit across everyone who bets.</div>
+      <button onclick="makeOffer()">Post offer</button>
+    </div>
+
+    <h2>Open offers</h2><div id="open"></div>
+    <h2>Settled bets</h2><div id="done"></div>
+    <h2>Leaderboard</h2><div id="board" class="card"></div>
   </div>
 
-  <h2>Open offers</h2><div id="open"></div>
-  <h2>Settled bets</h2><div id="done"></div>
-  <h2>Leaderboard</h2><div id="board" class="card"></div>
+  <div id="details" hidden>
+    <h2>Odds over time</h2>
+    <div class="card">
+      <select id="topicSel" onchange="selTopic=+this.value;renderDetails()"></select>
+      <div id="odds2"></div>
+    </div>
+    <h2>Head to head</h2>
+    <div class="card">
+      <div class="row">
+        <select id="p1" onchange="p1=this.value;renderDetails()"></select>
+        <select id="p2" onchange="p2=this.value;renderDetails()"></select>
+      </div>
+      <div id="h2h"></div>
+    </div>
+  </div>
 </main>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -61,15 +91,31 @@ if (!token) {
   store.set('wtb_token', token);
 }
 let mine = store.get('wtb_mine', []);
+let D = { bets: [], takes: [], byBet: {} };
+let selTopic = null, p1 = '', p2 = '';
+const leftOf = x => x.max_payout - (D.byBet[x.id] || []).reduce((s, k) => s + k.payout, 0);
+
 $('name').value = store.get('wtb_name', '');
 $('name').onchange = () => store.set('wtb_name', $('name').value.trim());
 
 function myName() {
   const n = $('name').value.trim();
-  if (!n) { alert('Type your name at the top first'); return null; }
+  if (!n) { alert('Type your name at the top of the Home page first'); return null; }
   store.set('wtb_name', n);
   return n;
 }
+
+function route() {
+  const d = location.hash === '#details';
+  $('home').hidden = d;
+  $('details').hidden = !d;
+  $('navHome').className = d ? '' : 'on';
+  $('navDet').className = d ? 'on' : '';
+  if (d) renderDetails();
+}
+window.onhashchange = route;
+
+function openDetails(t) { selTopic = t; location.hash = '#details'; }
 
 async function makeOffer() {
   const name = myName(); if (!name) return;
@@ -82,6 +128,18 @@ async function makeOffer() {
   if (error) return alert(error.message);
   mine.push(data); store.set('wtb_mine', mine);
   $('stmt').value = ''; $('odds').value = ''; $('max').value = '';
+  load();
+}
+
+async function counter(t) {
+  const name = myName(); if (!name) return;
+  const odds = parseFloat($('co' + t).value), max = parseInt($('cm' + t).value);
+  if (!(odds > 0) || !(max > 0)) return alert('Enter your odds and the most you will pay out');
+  const { data, error } = await sb.rpc('counter_offer', {
+    p_topic: t, p_name: name, p_odds: odds, p_max: max, p_token: token
+  });
+  if (error) return alert(error.message);
+  mine.push(data); store.set('wtb_mine', mine);
   load();
 }
 
@@ -106,10 +164,15 @@ async function load() {
     sb.from('takes').select('*').order('id')
   ]);
   if (b.error || t.error) return;
-  const bets = b.data, takes = t.data;
-
   const byBet = {};
-  takes.forEach(k => (byBet[k.bet_id] = byBet[k.bet_id] || []).push(k));
+  t.data.forEach(k => (byBet[k.bet_id] = byBet[k.bet_id] || []).push(k));
+  D = { bets: b.data, takes: t.data, byBet };
+  renderHome();
+  if (!$('details').hidden) renderDetails();
+}
+
+function renderHome() {
+  const { bets, byBet } = D;
 
   const net = {}, label = {};
   const add = (n, v) => { const k = n.toLowerCase(); label[k] = label[k] || n; net[k] = (net[k] || 0) + v; };
@@ -118,36 +181,130 @@ async function load() {
     else { add(x.creator, -k.payout); add(k.taker, k.payout); }
   }));
 
-  const card = x => {
-    const ts = byBet[x.id] || [];
-    const left = x.max_payout - ts.reduce((s, k) => s + k.payout, 0);
-    const maxStake = Math.floor(left / x.odds + 1e-9);
-    let h = `<div class="card"><b>${esc(x.creator)} says:</b> ${esc(x.statement)}
-      <div class="small">Pays ${Number(x.odds)} for every 1 bet · ${left} of ${x.max_payout} still available</div>`;
+  const row = x => {
+    const ts = byBet[x.id] || [], left = leftOf(x), maxStake = Math.floor(left / x.odds + 1e-9);
+    let h = `<div class="offer"><b>${esc(x.creator)}</b> pays ${Number(x.odds)} for every 1 bet · ${left} of ${x.max_payout} left`;
     h += ts.map(k => `<div class="small">• ${esc(k.taker)} bet ${k.stake} to win ${k.payout}</div>`).join('');
-    if (x.status === 'open') {
-      h += maxStake >= 1
-        ? `<div class="row"><input id="s${x.id}" type="number" min="1" max="${maxStake}" placeholder="Your bet (up to ${maxStake})"><button onclick="take(${x.id})">Bet</button></div>`
-        : '<div class="small"><b>Fully taken</b></div>';
-      if (mine.includes(x.id)) {
-        h += ts.length
-          ? `<div class="row"><button onclick="if(confirm('Confirm: you WON this bet?'))owner('settle_offer',${x.id},{p_creator_won:true})">I won</button>
-             <button class="grey" onclick="if(confirm('Confirm: you LOST this bet?'))owner('settle_offer',${x.id},{p_creator_won:false})">I lost</button></div>`
-          : `<button class="grey" onclick="owner('cancel_offer',${x.id})">Cancel offer</button>`;
-      }
-    } else {
-      h += `<div class="small"><b>Result: ${esc(x.creator)} ${x.creator_won ? 'won' : 'lost'}</b></div>`;
+    h += maxStake >= 1
+      ? `<div class="row"><input id="s${x.id}" type="number" min="1" max="${maxStake}" placeholder="Your bet (up to ${maxStake})"><button onclick="take(${x.id})">Bet</button></div>`
+      : '<div class="small"><b>Fully taken</b></div>';
+    if (mine.includes(x.id)) {
+      h += ts.length
+        ? `<div class="row"><button onclick="if(confirm('Confirm: you WON this bet?'))owner('settle_offer',${x.id},{p_creator_won:true})">I won</button>
+           <button class="grey" onclick="if(confirm('Confirm: you LOST this bet?'))owner('settle_offer',${x.id},{p_creator_won:false})">I lost</button></div>`
+        : `<button class="grey" onclick="owner('cancel_offer',${x.id})">Cancel offer</button>`;
     }
     return h + '</div>';
   };
 
-  $('open').innerHTML = bets.filter(x => x.status === 'open').map(card).join('') || '<p class="small">No open offers yet. Make the first one!</p>';
-  $('done').innerHTML = bets.filter(x => x.status === 'settled').map(card).join('') || '<p class="small">Nothing settled yet.</p>';
+  const topics = new Map();
+  bets.forEach(x => { const t = x.topic_id || x.id; if (!topics.has(t)) topics.set(t, []); topics.get(t).push(x); });
+
+  let open = '';
+  topics.forEach((offers, t) => {
+    const live = offers.filter(o => o.status === 'open');
+    if (!live.length) return;
+    const first = offers.find(o => o.id === t) || offers[offers.length - 1];
+    const best = Math.max(0, ...live.filter(o => leftOf(o) > 0).map(o => Number(o.odds)));
+    open += `<div class="card"><b>${esc(first.creator)} says:</b> ${esc(first.statement)}
+      ${live.sort((a, c) => c.odds - a.odds).map(row).join('')}
+      <details><summary>Offer better odds</summary>
+        <div class="row">
+          <input id="co${t}" type="number" min="0.1" step="0.1" placeholder="${best ? 'Odds (better than ' + best + ')' : 'Odds'}">
+          <input id="cm${t}" type="number" min="1" placeholder="Most you'll pay out">
+        </div>
+        <button onclick="counter(${t})">Post better offer</button>
+      </details>
+      <button class="grey" onclick="openDetails(${t})">Odds history</button></div>`;
+  });
+
+  const settled = bets.filter(x => x.status === 'settled').map(x =>
+    `<div class="card"><b>${esc(x.creator)} said:</b> ${esc(x.statement)}
+      <div class="small">Odds ${Number(x.odds)}</div>
+      ${(byBet[x.id] || []).map(k => `<div class="small">• ${esc(k.taker)} bet ${k.stake} to win ${k.payout}</div>`).join('')}
+      <div class="small"><b>Result: ${esc(x.creator)} ${x.creator_won ? 'won' : 'lost'}</b></div></div>`).join('');
+
+  $('open').innerHTML = open || '<p class="small">No open offers yet. Make the first one!</p>';
+  $('done').innerHTML = settled || '<p class="small">Nothing settled yet.</p>';
   $('board').innerHTML = Object.keys(net).sort((a, c) => net[c] - net[a])
     .map(k => `<div>${esc(label[k])}: ${net[k] > 0 ? '+' : ''}${net[k]}</div>`).join('') || '<span class="small">No settled bets yet.</span>';
 }
 
-setInterval(() => { if (document.activeElement.tagName !== 'INPUT') load(); }, 15000);
+function renderDetails() {
+  const { bets, takes } = D;
+  const byId = Object.fromEntries(bets.map(x => [x.id, x]));
+
+  // Odds over time
+  const topics = new Map();
+  bets.forEach(x => { const t = x.topic_id || x.id; if (!topics.has(t)) topics.set(t, []); topics.get(t).push(x); });
+  const ids = [...topics.keys()];
+  $('topicSel').innerHTML = ids.map(t =>
+    `<option value="${t}">#${t} ${esc((byId[t] || topics.get(t)[0]).statement.slice(0, 60))}</option>`).join('');
+  if (!ids.includes(selTopic)) selTopic = ids[0];
+
+  if (!ids.length) {
+    $('odds2').innerHTML = '<p class="small">No bets yet.</p>';
+  } else {
+    $('topicSel').value = selTopic;
+    const offers = topics.get(selTopic).slice().sort((a, c) => a.id - c.id);
+    const W = 560, H = 170, P = 28, n = offers.length;
+    const vals = offers.map(o => Number(o.odds));
+    const hi = Math.max(...vals), lo = Math.min(...vals);
+    const X = i => n === 1 ? W / 2 : P + i * (W - 2 * P) / (n - 1);
+    const Y = v => hi === lo ? H / 2 : H - P - (v - lo) / (hi - lo) * (H - 2 * P);
+    const line = vals.map((v, i) => `${X(i)},${Y(v)}`).join(' ');
+    const dots = vals.map((v, i) =>
+      `<circle cx="${X(i)}" cy="${Y(v)}" r="4" fill="#2563eb"/><text x="${X(i)}" y="${Y(v) - 9}" font-size="12" text-anchor="middle" fill="#222">${v}</text>`).join('');
+    const status = o => o.status === 'settled' ? `Settled (${esc(o.creator)} ${o.creator_won ? 'won' : 'lost'})`
+      : o.status === 'cancelled' ? 'Cancelled' : 'Open';
+    $('odds2').innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto"><polyline points="${line}" fill="none" stroke="#2563eb" stroke-width="2"/>${dots}</svg>
+      <div class="small">Each dot is an offer on this bet, oldest on the left. Higher odds pay more.</div>
+      <div class="scroll"><table><tr><th>Posted</th><th>By</th><th>Odds</th><th>Max payout</th><th>Taken</th><th>Status</th></tr>
+      ${offers.map(o => `<tr><td>${new Date(o.created_at).toLocaleString()}</td><td>${esc(o.creator)}</td><td>${Number(o.odds)}</td><td>${o.max_payout}</td><td>${o.max_payout - leftOf(o)}</td><td>${status(o)}</td></tr>`).join('')}</table></div>`;
+  }
+
+  // Head to head
+  const names = {};
+  bets.forEach(x => { const k = x.creator.toLowerCase(); names[k] = names[k] || x.creator; });
+  takes.forEach(x => { const k = x.taker.toLowerCase(); names[k] = names[k] || x.taker; });
+  const keys = Object.keys(names).sort();
+  const me = String(store.get('wtb_name', '') || '').toLowerCase();
+  if (!keys.includes(p1)) p1 = keys.includes(me) ? me : (keys[0] || '');
+  if (!keys.includes(p2) || p2 === p1) p2 = keys.find(n => n !== p1) || '';
+  const opts = keys.map(k => `<option value="${esc(k)}">${esc(names[k])}</option>`).join('');
+  $('p1').innerHTML = opts; $('p2').innerHTML = opts;
+  $('p1').value = p1; $('p2').value = p2;
+
+  if (!p2) { $('h2h').innerHTML = '<p class="small">Needs at least two people.</p>'; return; }
+
+  let tot = 0, w1 = 0, w2 = 0;
+  const rows = [];
+  takes.forEach(k => {
+    const x = byId[k.bet_id]; if (!x) return;
+    const c = x.creator.toLowerCase(), t = k.taker.toLowerCase();
+    if (!((c === p1 && t === p2) || (c === p2 && t === p1))) return;
+    let result = 'Pending';
+    if (x.status === 'settled') {
+      const cNet = x.creator_won ? k.stake : -k.payout;
+      const v1 = c === p1 ? cNet : -cNet;
+      tot += v1;
+      if (v1 > 0) w1++; else w2++;
+      result = `${esc(x.creator_won ? x.creator : k.taker)} won ${x.creator_won ? k.stake : k.payout}`;
+    }
+    rows.push(`<tr><td>${esc(x.statement)}</td><td>${esc(x.creator)}</td><td>${Number(x.odds)}</td><td>${k.stake}</td><td>${result}</td></tr>`);
+  });
+
+  $('h2h').innerHTML = rows.length
+    ? `<p><b>${esc(names[p1])}</b> is <b>${tot > 0 ? '+' : ''}${tot}</b> against <b>${esc(names[p2])}</b> on settled bets (${esc(names[p1])} won ${w1}, ${esc(names[p2])} won ${w2}).</p>
+       <div class="scroll"><table><tr><th>Bet</th><th>Offered by</th><th>Odds</th><th>Taker's bet</th><th>Result</th></tr>${rows.join('')}</table></div>`
+    : '<p class="small">No bets between these two yet.</p>';
+}
+
+setInterval(() => {
+  const a = document.activeElement.tagName;
+  if (a !== 'INPUT' && a !== 'SELECT' && !document.querySelector('details[open]')) load();
+}, 15000);
+route();
 load();
 </script>
 </body>

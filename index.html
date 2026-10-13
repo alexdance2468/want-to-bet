@@ -116,8 +116,8 @@
     </div>
 
     <div class="card">
-      <h3>4. Offer better odds</h3>
-      <p>Think you can do better? Click <b>Offer better odds</b> under any bet to post your own offer on the same statement. Your odds have to be higher than the best offer still available, because higher odds pay more to the person betting. Each offer has its own limit, and the best odds are shown first.</p>
+      <h3>4. Offer your own odds</h3>
+      <p>Want to back the same statement at different odds? Click <b>Offer your own odds</b> under any bet to post your own offer on it. Your odds can be higher or lower than the others. All the offers on a bet are listed together with the best odds first, and the person betting chooses whichever one they like. Each offer has its own limit.</p>
     </div>
 
     <div class="card">
@@ -305,12 +305,12 @@ function renderHome() {
     const best = Math.max(0, ...live.filter(o => leftOf(o) > 0).map(o => Number(o.odds)));
     open += `<div class="card"><b>${esc(first.statement)}</b>
       ${live.sort((a, c) => c.odds - a.odds).map(row).join('')}
-      <details><summary>Offer better odds</summary>
+      <details><summary>Offer your own odds</summary>
         <div class="row">
-          <input id="co${t}" type="number" min="0.1" step="0.1" placeholder="${best ? 'Odds (better than ' + best + ')' : 'Odds'}">
+          <input id="co${t}" type="number" min="0.1" step="0.1" placeholder="${best ? 'Your odds (best now ' + best + ')' : 'Your odds'}">
           <input id="cm${t}" type="number" min="1" placeholder="Most you'll pay out">
         </div>
-        <button onclick="counter(${t})">Post better offer</button>
+        <button onclick="counter(${t})">Post offer</button>
       </details>
       <button class="grey" onclick="openDetails(${t})">Odds history</button></div>`;
   });

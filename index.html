@@ -281,7 +281,7 @@ function renderHome() {
     if (!live.length) return;
     const first = offers.find(o => o.id === t) || offers[offers.length - 1];
     const best = Math.max(0, ...live.filter(o => leftOf(o) > 0).map(o => Number(o.odds)));
-    open += `<div class="card"><b>${esc(first.creator)} says:</b> ${esc(first.statement)}
+    open += `<div class="card"><b>${esc(first.statement)}</b>
       ${live.sort((a, c) => c.odds - a.odds).map(row).join('')}
       <details><summary>Offer better odds</summary>
         <div class="row">

@@ -29,7 +29,6 @@
   .card p{margin:6px 0}
   .card ul,.card ol{margin:6px 0;padding-left:22px}
   .eg{background:#eef4ff;border-radius:8px;padding:10px;margin:8px 0}
-  .warn{background:#fff4e5;border-radius:8px;padding:8px;margin:6px 0;font-size:.9em}
 </style>
 </head>
 <body>
@@ -123,12 +122,8 @@
 
     <div class="card">
       <h3>5. Say who won</h3>
-      <p>Once the outcome is known, <b>both people in the bet</b> go to Home, find the bet under <b>Your bets awaiting a result</b>, and click the button with their own name on it, such as <b>Alex won</b> or <b>Alex lost</b>.</p>
-      <ul>
-        <li>If your answers match, the result is locked in and the leaderboard updates.</li>
-        <li>If they don't match, the bet stays open and shows that you disagree. Either of you can change your answer until you agree.</li>
-        <li>Each bet is settled separately, so if two people bet on the same offer, each pair settles their own bet.</li>
-      </ul>
+      <p>Once the outcome is known, <b>anyone</b> can go to Home, find the bet under <b>Bets awaiting a result</b>, and click the name of the winner, such as <b>Alex won</b> or <b>John won</b>. The result is final straight away, and the leaderboard updates.</p>
+      <p>Each bet is settled separately, so if two people bet on the same offer, each of those bets gets its own result.</p>
       <p>If nobody has bet on your offer yet, you can click <b>Cancel offer</b> instead.</p>
     </div>
 
@@ -148,9 +143,8 @@
     <div class="card">
       <h3>Good to know</h3>
       <ul>
-        <li><b>It runs on honesty.</b> Nothing stops two people from both claiming they won, so it works best among people who trust each other.</li>
+        <li><b>It runs on honesty.</b> Anyone can declare a winner and the result can't be changed afterwards, so only settle a bet when you're sure of the outcome.</li>
         <li><b>Names aren't locked.</b> Anyone can type any name, so use names your group recognises.</li>
-        <li><b>Use the same device.</b> Your offers and bets are tied to the browser you made them from. If you clear your browser data or switch devices, you can no longer say who won on them.</li>
         <li><b>It's all fake.</b> The numbers are just for bragging rights.</li>
       </ul>
     </div>
@@ -173,7 +167,6 @@ if (!token) {
   store.set('wtb_token', token);
 }
 let mine = store.get('wtb_mine', []);          // offers made on this device
-let myTakes = store.get('wtb_mytakes', []);    // bets placed on this device
 let D = { bets: [], takes: [], byBet: {} };
 let selTopic = null, p1 = '', p2 = '';
 const leftOf = x => x.max_payout - (D.byBet[x.id] || []).reduce((s, k) => s + k.payout, 0);
@@ -233,14 +226,13 @@ async function take(id) {
   const name = myName(); if (!name) return;
   const stake = parseInt($('s' + id).value);
   if (!(stake > 0)) return alert('Enter how much you want to bet');
-  const { data, error } = await sb.rpc('take_offer', { p_id: id, p_name: name, p_stake: stake, p_token: token });
+  const { error } = await sb.rpc('take_offer', { p_id: id, p_name: name, p_stake: stake, p_token: token });
   if (error) alert(error.message);
-  else { myTakes.push(data); store.set('wtb_mytakes', myTakes); }
   load();
 }
 
-async function vote(id, winner) {
-  const { error } = await sb.rpc('vote_take', { p_take: id, p_token: token, p_winner: winner });
+async function settle(id, winner) {
+  const { error } = await sb.rpc('settle_take', { p_take: id, p_winner: winner });
   if (error) alert(error.message);
   load();
 }
@@ -268,7 +260,7 @@ function renderHome() {
   const { bets, takes, byBet } = D;
   const byId = Object.fromEntries(bets.map(x => [x.id, x]));
 
-  // Leaderboard (agreed results only)
+  // Leaderboard
   const net = {}, label = {};
   const add = (n, v) => { const k = n.toLowerCase(); label[k] = label[k] || n; net[k] = (net[k] || 0) + v; };
   takes.filter(k => k.winner).forEach(k => {
@@ -277,25 +269,18 @@ function renderHome() {
     else { add(x.creator, -k.payout); add(k.taker, k.payout); }
   });
 
-  // Your bets awaiting a result
-  const waiting = takes.filter(k => !k.winner).map(k => [k, byId[k.bet_id]])
-    .filter(([k, x]) => x && (mine.includes(x.id) || myTakes.includes(k.id)));
-  const waitHtml = waiting.map(([k, x]) => {
-    const isC = mine.includes(x.id);
-    const me = isC ? x.creator : k.taker;
-    const win = isC ? 'creator' : 'taker', lose = isC ? 'taker' : 'creator';
-    const say = (name, v) => v ? `${esc(name)} says ${esc(who(x, k, v))} won` : `${esc(name)} hasn't said yet`;
-    const disputed = k.creator_vote && k.taker_vote && k.creator_vote !== k.taker_vote;
+  // Bets awaiting a result (anyone can settle)
+  const waitHtml = takes.filter(k => !k.winner).sort((a, c) => c.id - a.id).map(k => {
+    const x = byId[k.bet_id]; if (!x) return '';
     return `<div class="card"><b>${esc(x.statement)}</b>
-      <div class="small">${esc(x.creator)} offered ${Number(x.odds)} · ${esc(k.taker)} bet ${k.stake} (wins ${k.payout} if ${esc(x.creator)} is wrong)</div>
-      <div class="small">${say(x.creator, k.creator_vote)} · ${say(k.taker, k.taker_vote)}</div>
-      ${disputed ? '<div class="warn">Your answers do not match, so this is not settled yet. Either of you can change your answer.</div>' : ''}
+      <div class="small">${esc(x.creator)} offered ${Number(x.odds)} · ${esc(k.taker)} bet ${k.stake}</div>
+      <div class="small">If ${esc(x.creator)} wins, ${esc(k.taker)} pays ${k.stake}. If ${esc(k.taker)} wins, ${esc(x.creator)} pays ${k.payout}.</div>
       <div class="row">
-        <button onclick="if(confirm('Confirm this result?'))vote(${k.id},'${win}')">${esc(me)} won</button>
-        <button class="grey" onclick="if(confirm('Confirm this result?'))vote(${k.id},'${lose}')">${esc(me)} lost</button>
+        <button onclick="if(confirm('Declare this result? It cannot be changed.'))settle(${k.id},'creator')">${esc(x.creator)} won</button>
+        <button onclick="if(confirm('Declare this result? It cannot be changed.'))settle(${k.id},'taker')">${esc(k.taker)} won</button>
       </div></div>`;
   }).join('');
-  $('mybets').innerHTML = waitHtml ? '<h2>Your bets awaiting a result</h2>' + waitHtml : '';
+  $('mybets').innerHTML = waitHtml ? '<h2>Bets awaiting a result</h2>' + waitHtml : '';
 
   // Open offers
   const row = x => {
@@ -330,7 +315,7 @@ function renderHome() {
       <button class="grey" onclick="openDetails(${t})">Odds history</button></div>`;
   });
 
-  // Settled bets (agreed results only)
+  // Settled bets
   const settled = takes.filter(k => k.winner).sort((a, c) => c.id - a.id).map(k => {
     const x = byId[k.bet_id]; if (!x) return '';
     const w = who(x, k, k.winner), l = who(x, k, k.winner === 'creator' ? 'taker' : 'creator');
@@ -405,8 +390,6 @@ function renderDetails() {
       tot += v1;
       if (v1 > 0) w1++; else w2++;
       result = `${esc(who(x, k, k.winner))} won ${k.winner === 'creator' ? k.stake : k.payout}`;
-    } else if (k.creator_vote && k.taker_vote && k.creator_vote !== k.taker_vote) {
-      result = 'Disputed';
     }
     rows.push(`<tr><td>${esc(x.statement)}</td><td>${esc(x.creator)}</td><td>${Number(x.odds)}</td><td>${k.stake}</td><td>${result}</td></tr>`);
   });

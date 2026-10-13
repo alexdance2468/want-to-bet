@@ -29,6 +29,7 @@
   .card p{margin:6px 0}
   .card ul,.card ol{margin:6px 0;padding-left:22px}
   .eg{background:#eef4ff;border-radius:8px;padding:10px;margin:8px 0}
+  .warn{background:#fff4e5;border-radius:8px;padding:8px;margin:6px 0;font-size:.9em}
 </style>
 </head>
 <body>
@@ -57,6 +58,8 @@
       <div class="small">Odds 2 means: if someone bets 1 and you lose, you pay out 2. "Most you'll pay out" is your total limit across everyone who bets.</div>
       <button onclick="makeOffer()">Post offer</button>
     </div>
+
+    <div id="mybets"></div>
 
     <h2>Open offers</h2><div id="open"></div>
     <h2>Settled bets</h2><div id="done"></div>
@@ -110,7 +113,7 @@
 
     <div class="card">
       <h3>3. Bet against an offer</h3>
-      <p>Find an offer you disagree with, type how much you want to bet (any amount up to what's left), and click <b>Bet</b>. Several people can each take a piece of the same offer until your limit is used up. You can't bet against your own offer.</p>
+      <p>Find an offer you disagree with, type how much you want to bet (any amount up to what's left), and click <b>Bet</b>. Several people can each take a piece of the same offer until the limit is used up. You can't bet against your own offer.</p>
     </div>
 
     <div class="card">
@@ -119,8 +122,13 @@
     </div>
 
     <div class="card">
-      <h3>5. Settle the bet</h3>
-      <p>Once the outcome is known, the person who made the offer clicks <b>I won</b> or <b>I lost</b>. That decides the result for everyone who bet on that offer, and the leaderboard updates.</p>
+      <h3>5. Say who won</h3>
+      <p>Once the outcome is known, <b>both people in the bet</b> go to Home, find the bet under <b>Your bets awaiting a result</b>, and click <b>I won</b> or <b>I lost</b>.</p>
+      <ul>
+        <li>If your answers match, the result is locked in and the leaderboard updates.</li>
+        <li>If they don't match, the bet stays open and shows that you disagree. Either of you can change your answer until you agree.</li>
+        <li>Each bet is settled separately, so if two people bet on the same offer, each pair settles their own bet.</li>
+      </ul>
       <p>If nobody has bet on your offer yet, you can click <b>Cancel offer</b> instead.</p>
     </div>
 
@@ -140,9 +148,9 @@
     <div class="card">
       <h3>Good to know</h3>
       <ul>
-        <li><b>It runs on honesty.</b> The person who made the offer decides who won, so it works best among people who trust each other.</li>
+        <li><b>It runs on honesty.</b> Nothing stops two people from both claiming they won, so it works best among people who trust each other.</li>
         <li><b>Names aren't locked.</b> Anyone can type any name, so use names your group recognises.</li>
-        <li><b>You settle from the same device.</b> Your offers are tied to the browser you posted them from. If you clear your browser data or switch devices, you can no longer settle or cancel them.</li>
+        <li><b>Use the same device.</b> Your offers and bets are tied to the browser you made them from. If you clear your browser data or switch devices, you can no longer say who won on them.</li>
         <li><b>It's all fake.</b> The numbers are just for bragging rights.</li>
       </ul>
     </div>
@@ -164,10 +172,13 @@ if (!token) {
   token = Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('');
   store.set('wtb_token', token);
 }
-let mine = store.get('wtb_mine', []);
+let mine = store.get('wtb_mine', []);          // offers made on this device
+let myTakes = store.get('wtb_mytakes', []);    // bets placed on this device
 let D = { bets: [], takes: [], byBet: {} };
 let selTopic = null, p1 = '', p2 = '';
 const leftOf = x => x.max_payout - (D.byBet[x.id] || []).reduce((s, k) => s + k.payout, 0);
+const active = x => x.status === 'open' && (leftOf(x) > 0 || (D.byBet[x.id] || []).some(k => !k.winner));
+const who = (x, k, w) => w === 'creator' ? x.creator : k.taker;
 
 $('name').value = store.get('wtb_name', '');
 $('name').onchange = () => store.set('wtb_name', $('name').value.trim());
@@ -222,13 +233,20 @@ async function take(id) {
   const name = myName(); if (!name) return;
   const stake = parseInt($('s' + id).value);
   if (!(stake > 0)) return alert('Enter how much you want to bet');
-  const { error } = await sb.rpc('take_offer', { p_id: id, p_name: name, p_stake: stake });
+  const { data, error } = await sb.rpc('take_offer', { p_id: id, p_name: name, p_stake: stake, p_token: token });
+  if (error) alert(error.message);
+  else { myTakes.push(data); store.set('wtb_mytakes', myTakes); }
+  load();
+}
+
+async function vote(id, winner) {
+  const { error } = await sb.rpc('vote_take', { p_take: id, p_token: token, p_winner: winner });
   if (error) alert(error.message);
   load();
 }
 
-async function owner(fn, id, extra = {}) {
-  const { error } = await sb.rpc(fn, { p_id: id, p_token: token, ...extra });
+async function owner(fn, id) {
+  const { error } = await sb.rpc(fn, { p_id: id, p_token: token });
   if (error) alert(error.message);
   load();
 }
@@ -247,28 +265,46 @@ async function load() {
 }
 
 function renderHome() {
-  const { bets, byBet } = D;
+  const { bets, takes, byBet } = D;
+  const byId = Object.fromEntries(bets.map(x => [x.id, x]));
 
+  // Leaderboard (agreed results only)
   const net = {}, label = {};
   const add = (n, v) => { const k = n.toLowerCase(); label[k] = label[k] || n; net[k] = (net[k] || 0) + v; };
-  bets.filter(x => x.status === 'settled').forEach(x => (byBet[x.id] || []).forEach(k => {
-    if (x.creator_won) { add(x.creator, k.stake); add(k.taker, -k.stake); }
+  takes.filter(k => k.winner).forEach(k => {
+    const x = byId[k.bet_id]; if (!x) return;
+    if (k.winner === 'creator') { add(x.creator, k.stake); add(k.taker, -k.stake); }
     else { add(x.creator, -k.payout); add(k.taker, k.payout); }
-  }));
+  });
 
+  // Your bets awaiting a result
+  const waiting = takes.filter(k => !k.winner).map(k => [k, byId[k.bet_id]])
+    .filter(([k, x]) => x && (mine.includes(x.id) || myTakes.includes(k.id)));
+  const waitHtml = waiting.map(([k, x]) => {
+    const isC = mine.includes(x.id);
+    const win = isC ? 'creator' : 'taker', lose = isC ? 'taker' : 'creator';
+    const say = (name, v) => v ? `${esc(name)} says ${esc(who(x, k, v))} won` : `${esc(name)} hasn't said yet`;
+    const disputed = k.creator_vote && k.taker_vote && k.creator_vote !== k.taker_vote;
+    return `<div class="card"><b>${esc(x.statement)}</b>
+      <div class="small">${esc(x.creator)} offered ${Number(x.odds)} · ${esc(k.taker)} bet ${k.stake} (wins ${k.payout} if ${esc(x.creator)} is wrong)</div>
+      <div class="small">${say(x.creator, k.creator_vote)} · ${say(k.taker, k.taker_vote)}</div>
+      ${disputed ? '<div class="warn">Your answers do not match, so this is not settled yet. Either of you can change your answer.</div>' : ''}
+      <div class="row">
+        <button onclick="if(confirm('Confirm: YOU won this bet?'))vote(${k.id},'${win}')">I won</button>
+        <button class="grey" onclick="if(confirm('Confirm: you LOST this bet?'))vote(${k.id},'${lose}')">I lost</button>
+      </div></div>`;
+  }).join('');
+  $('mybets').innerHTML = waitHtml ? '<h2>Your bets awaiting a result</h2>' + waitHtml : '';
+
+  // Open offers
   const row = x => {
     const ts = byBet[x.id] || [], left = leftOf(x), maxStake = Math.floor(left / x.odds + 1e-9);
     let h = `<div class="offer"><b>${esc(x.creator)}</b> pays ${Number(x.odds)} for every 1 bet · ${left} of ${x.max_payout} left`;
-    h += ts.map(k => `<div class="small">• ${esc(k.taker)} bet ${k.stake} to win ${k.payout}</div>`).join('');
+    h += ts.map(k => `<div class="small">• ${esc(k.taker)} bet ${k.stake} to win ${k.payout} · ${k.winner ? '<b>' + esc(who(x, k, k.winner)) + ' won</b>' : 'awaiting result'}</div>`).join('');
     h += maxStake >= 1
       ? `<div class="row"><input id="s${x.id}" type="number" min="1" max="${maxStake}" placeholder="Your bet (up to ${maxStake})"><button onclick="take(${x.id})">Bet</button></div>`
       : '<div class="small"><b>Fully taken</b></div>';
-    if (mine.includes(x.id)) {
-      h += ts.length
-        ? `<div class="row"><button onclick="if(confirm('Confirm: you WON this bet?'))owner('settle_offer',${x.id},{p_creator_won:true})">I won</button>
-           <button class="grey" onclick="if(confirm('Confirm: you LOST this bet?'))owner('settle_offer',${x.id},{p_creator_won:false})">I lost</button></div>`
-        : `<button class="grey" onclick="owner('cancel_offer',${x.id})">Cancel offer</button>`;
-    }
+    if (mine.includes(x.id) && !ts.length) h += `<button class="grey" onclick="owner('cancel_offer',${x.id})">Cancel offer</button>`;
     return h + '</div>';
   };
 
@@ -277,7 +313,7 @@ function renderHome() {
 
   let open = '';
   topics.forEach((offers, t) => {
-    const live = offers.filter(o => o.status === 'open');
+    const live = offers.filter(active);
     if (!live.length) return;
     const first = offers.find(o => o.id === t) || offers[offers.length - 1];
     const best = Math.max(0, ...live.filter(o => leftOf(o) > 0).map(o => Number(o.odds)));
@@ -293,11 +329,15 @@ function renderHome() {
       <button class="grey" onclick="openDetails(${t})">Odds history</button></div>`;
   });
 
-  const settled = bets.filter(x => x.status === 'settled').map(x =>
-    `<div class="card"><b>${esc(x.creator)} said:</b> ${esc(x.statement)}
-      <div class="small">Odds ${Number(x.odds)}</div>
-      ${(byBet[x.id] || []).map(k => `<div class="small">• ${esc(k.taker)} bet ${k.stake} to win ${k.payout}</div>`).join('')}
-      <div class="small"><b>Result: ${esc(x.creator)} ${x.creator_won ? 'won' : 'lost'}</b></div></div>`).join('');
+  // Settled bets (agreed results only)
+  const settled = takes.filter(k => k.winner).sort((a, c) => c.id - a.id).map(k => {
+    const x = byId[k.bet_id]; if (!x) return '';
+    const w = who(x, k, k.winner), l = who(x, k, k.winner === 'creator' ? 'taker' : 'creator');
+    const amt = k.winner === 'creator' ? k.stake : k.payout;
+    return `<div class="card"><b>${esc(x.statement)}</b>
+      <div class="small">${esc(x.creator)} offered ${Number(x.odds)} · ${esc(k.taker)} bet ${k.stake}</div>
+      <div class="offer"><b>${esc(w)} won ${amt}</b> (${esc(l)} lost ${amt})</div></div>`;
+  }).join('');
 
   $('open').innerHTML = open || '<p class="small">No open offers yet. Make the first one!</p>';
   $('done').innerHTML = settled || '<p class="small">Nothing settled yet.</p>';
@@ -330,8 +370,7 @@ function renderDetails() {
     const line = vals.map((v, i) => `${X(i)},${Y(v)}`).join(' ');
     const dots = vals.map((v, i) =>
       `<circle cx="${X(i)}" cy="${Y(v)}" r="4" fill="#2563eb"/><text x="${X(i)}" y="${Y(v) - 9}" font-size="12" text-anchor="middle" fill="#222">${v}</text>`).join('');
-    const status = o => o.status === 'settled' ? `Settled (${esc(o.creator)} ${o.creator_won ? 'won' : 'lost'})`
-      : o.status === 'cancelled' ? 'Cancelled' : 'Open';
+    const status = o => o.status === 'cancelled' ? 'Cancelled' : active(o) ? 'Open' : 'Complete';
     $('odds2').innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto"><polyline points="${line}" fill="none" stroke="#2563eb" stroke-width="2"/>${dots}</svg>
       <div class="small">Each dot is an offer on this bet, oldest on the left. Higher odds pay more.</div>
       <div class="scroll"><table><tr><th>Posted</th><th>By</th><th>Odds</th><th>Max payout</th><th>Taken</th><th>Status</th></tr>
@@ -358,13 +397,15 @@ function renderDetails() {
     const x = byId[k.bet_id]; if (!x) return;
     const c = x.creator.toLowerCase(), t = k.taker.toLowerCase();
     if (!((c === p1 && t === p2) || (c === p2 && t === p1))) return;
-    let result = 'Pending';
-    if (x.status === 'settled') {
-      const cNet = x.creator_won ? k.stake : -k.payout;
+    let result = 'Awaiting result';
+    if (k.winner) {
+      const cNet = k.winner === 'creator' ? k.stake : -k.payout;
       const v1 = c === p1 ? cNet : -cNet;
       tot += v1;
       if (v1 > 0) w1++; else w2++;
-      result = `${esc(x.creator_won ? x.creator : k.taker)} won ${x.creator_won ? k.stake : k.payout}`;
+      result = `${esc(who(x, k, k.winner))} won ${k.winner === 'creator' ? k.stake : k.payout}`;
+    } else if (k.creator_vote && k.taker_vote && k.creator_vote !== k.taker_vote) {
+      result = 'Disputed';
     }
     rows.push(`<tr><td>${esc(x.statement)}</td><td>${esc(x.creator)}</td><td>${Number(x.odds)}</td><td>${k.stake}</td><td>${result}</td></tr>`);
   });

@@ -123,7 +123,7 @@
 
     <div class="card">
       <h3>5. Say who won</h3>
-      <p>Once the outcome is known, <b>both people in the bet</b> go to Home, find the bet under <b>Your bets awaiting a result</b>, and click <b>I won</b> or <b>I lost</b>.</p>
+      <p>Once the outcome is known, <b>both people in the bet</b> go to Home, find the bet under <b>Your bets awaiting a result</b>, and click the button with their own name on it, such as <b>Alex won</b> or <b>Alex lost</b>.</p>
       <ul>
         <li>If your answers match, the result is locked in and the leaderboard updates.</li>
         <li>If they don't match, the bet stays open and shows that you disagree. Either of you can change your answer until you agree.</li>
@@ -282,6 +282,7 @@ function renderHome() {
     .filter(([k, x]) => x && (mine.includes(x.id) || myTakes.includes(k.id)));
   const waitHtml = waiting.map(([k, x]) => {
     const isC = mine.includes(x.id);
+    const me = isC ? x.creator : k.taker;
     const win = isC ? 'creator' : 'taker', lose = isC ? 'taker' : 'creator';
     const say = (name, v) => v ? `${esc(name)} says ${esc(who(x, k, v))} won` : `${esc(name)} hasn't said yet`;
     const disputed = k.creator_vote && k.taker_vote && k.creator_vote !== k.taker_vote;
@@ -290,8 +291,8 @@ function renderHome() {
       <div class="small">${say(x.creator, k.creator_vote)} · ${say(k.taker, k.taker_vote)}</div>
       ${disputed ? '<div class="warn">Your answers do not match, so this is not settled yet. Either of you can change your answer.</div>' : ''}
       <div class="row">
-        <button onclick="if(confirm('Confirm: YOU won this bet?'))vote(${k.id},'${win}')">I won</button>
-        <button class="grey" onclick="if(confirm('Confirm: you LOST this bet?'))vote(${k.id},'${lose}')">I lost</button>
+        <button onclick="if(confirm('Confirm this result?'))vote(${k.id},'${win}')">${esc(me)} won</button>
+        <button class="grey" onclick="if(confirm('Confirm this result?'))vote(${k.id},'${lose}')">${esc(me)} lost</button>
       </div></div>`;
   }).join('');
   $('mybets').innerHTML = waitHtml ? '<h2>Your bets awaiting a result</h2>' + waitHtml : '';

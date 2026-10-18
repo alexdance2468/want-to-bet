@@ -16,6 +16,7 @@
   .row button{flex-shrink:0}
   .small{color:#666;font-size:.9em}
   .offer{border-top:1px solid #eee;margin-top:8px;padding-top:6px}
+  .tag{background:#e0e7ff;color:#3730a3;border-radius:10px;padding:2px 8px;font-size:.75em;margin-left:6px;font-weight:normal}
   h1{margin-bottom:0}
   .sub{color:#666;margin-bottom:12px}
   nav{display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap}
@@ -35,6 +36,17 @@
 <main>
   <h1>Want to Bet</h1>
   <div class="sub">by Alex Dance</div>
+
+  <div class="card">
+    <b>Group</b>
+    <select id="groupSel" onchange="switchGroup(this.value)"></select>
+    <div class="small" id="groupInfo"></div>
+    <details id="groupDet"><summary>Create or join a group</summary>
+      <div class="row"><input id="newGroup" placeholder="New group name" maxlength="40"><button onclick="createGroup()">Create</button></div>
+      <div class="row"><input id="joinCode" placeholder="Paste a group link or code"><button onclick="joinGroup()">Join</button></div>
+    </details>
+  </div>
+
   <nav>
     <a id="nav_home" href="#home">Home</a>
     <a id="nav_details" href="#details">Details</a>
@@ -55,12 +67,22 @@
         <input id="max" type="number" min="1" placeholder="Most you'll pay out">
       </div>
       <div class="small">Odds 2 means: if someone bets 1 and you lose, you pay out 2. "Most you'll pay out" is your total limit across everyone who bets.</div>
+      <div class="row">
+        <div style="flex:1"><div class="small">Topic</div><select id="offerTopic"></select></div>
+        <div style="flex:1"><div class="small">Betting closes (optional)</div><input id="closes" type="datetime-local"></div>
+      </div>
+      <details id="topicDet"><summary>Add a new topic</summary>
+        <div class="row"><input id="newTopic" placeholder="New topic (e.g. NRL)" maxlength="30"><button onclick="addTopic()">Add</button></div>
+      </details>
+      <div class="small">Nobody can bet after the closing time, and the bet can be settled once it has passed.</div>
       <button onclick="makeOffer()">Post offer</button>
     </div>
 
-    <div id="mybets"></div>
+    <div id="ready"></div>
 
-    <h2>Open offers</h2><div id="open"></div>
+    <h2>Open offers</h2>
+    <select id="topicFilter" onchange="topicFilter=this.value;renderHome()"></select>
+    <div id="open"></div>
     <h2>Settled bets</h2><div id="done"></div>
     <h2>Leaderboard</h2><div id="board" class="card"></div>
   </div>
@@ -90,16 +112,29 @@
     </div>
 
     <div class="card">
-      <h3>1. Type your name</h3>
+      <h3>1. Pick a group</h3>
+      <p>Everything on the site lives inside a group, and each group has its own bets, topics and leaderboard.</p>
+      <ul>
+        <li><b>Everyone (public)</b> is the default group. Anyone can see it, and it's where you land if you don't join another group.</li>
+        <li><b>Create a group</b> under <i>Create or join a group</i> to get a private space. You'll get an invite link to share.</li>
+        <li><b>Join a group</b> by opening an invite link, or by pasting a link or code into the Join box. Your groups appear in the dropdown.</li>
+      </ul>
+      <p>The invite link is the only protection, so only share it with people you want in the group.</p>
+    </div>
+
+    <div class="card">
+      <h3>2. Type your name</h3>
       <p>On the Home page, type your name in the <b>Your name</b> box. This is the name shown on your offers and bets, and your browser remembers it for next time.</p>
     </div>
 
     <div class="card">
-      <h3>2. Make an offer</h3>
-      <p>Write what you're betting on, for example <i>"It will rain in Sydney on Saturday"</i>, then fill in two numbers:</p>
+      <h3>3. Make an offer</h3>
+      <p>Write what you're betting on, for example <i>"It will rain in Sydney on Saturday"</i>, then fill in:</p>
       <ul>
         <li><b>Odds:</b> how much you'll pay out for every 1 someone bets against you.</li>
         <li><b>Most you'll pay out:</b> your total limit across everyone who bets.</li>
+        <li><b>Topic:</b> a category such as NRL or Work. Use <i>Add a new topic</i> to create one. Anyone in the group can add topics, and you can filter Home by topic.</li>
+        <li><b>Betting closes (optional):</b> after this time nobody can bet. Leave it blank for no closing time.</li>
       </ul>
       <div class="eg">
         <b>Example:</b> You offer odds of <b>2</b> with a most-you'll-pay-out of <b>100</b>.
@@ -111,18 +146,18 @@
     </div>
 
     <div class="card">
-      <h3>3. Bet against an offer</h3>
-      <p>Find an offer you disagree with, type how much you want to bet (any amount up to what's left), and click <b>Bet</b>. Several people can each take a piece of the same offer until the limit is used up. You can't bet against your own offer.</p>
+      <h3>4. Bet against an offer</h3>
+      <p>Find an offer you disagree with, type how much you want to bet (any amount up to what's left), and click <b>Bet</b>. Several people can each take a piece of the same offer until the limit is used up. You can't bet against your own offer, and you can't bet once betting has closed.</p>
     </div>
 
     <div class="card">
-      <h3>4. Offer your own odds</h3>
-      <p>Want to back the same statement at different odds? Click <b>Offer your own odds</b> under any bet to post your own offer on it. Your odds can be higher or lower than the others. All the offers on a bet are listed together with the best odds first, and the person betting chooses whichever one they like. Each offer has its own limit.</p>
+      <h3>5. Offer your own odds</h3>
+      <p>Want to back the same statement at different odds? Click <b>Offer your own odds</b> under any bet to post your own offer on it. Your odds can be higher or lower than the others. All the offers on a bet are listed together with the best odds first, and the person betting chooses whichever one they like. Each offer has its own limit and shares the same closing time.</p>
     </div>
 
     <div class="card">
-      <h3>5. Say who won</h3>
-      <p>Once the outcome is known, <b>anyone</b> can go to Home, find the bet under <b>Bets awaiting a result</b>, and click the name of the winner, such as <b>Alex won</b> or <b>John won</b>. The result is final straight away, and the leaderboard updates.</p>
+      <h3>6. Say who won</h3>
+      <p>Once betting has closed (or straight away if there's no closing time), the bet appears under <b>Ready to settle</b>. <b>Anyone</b> in the group can click the name of the winner, such as <b>Alex won</b> or <b>John won</b>. The result is final straight away, and the leaderboard updates.</p>
       <p>Each bet is settled separately, so if two people bet on the same offer, each of those bets gets its own result.</p>
       <p>If nobody has bet on your offer yet, you can click <b>Cancel offer</b> instead.</p>
     </div>
@@ -137,13 +172,13 @@
 
     <div class="card">
       <h3>The leaderboard</h3>
-      <p>Everyone's net winnings across settled bets. It starts at 0, goes up when you win, and can go below 0 when you lose. There's no wallet or starting balance.</p>
+      <p>Everyone's net winnings across settled bets in the current group. It starts at 0, goes up when you win, and can go below 0 when you lose. There's no wallet or starting balance.</p>
     </div>
 
     <div class="card">
       <h3>Good to know</h3>
       <ul>
-        <li><b>It runs on honesty.</b> Anyone can declare a winner and the result can't be changed afterwards, so only settle a bet when you're sure of the outcome.</li>
+        <li><b>It runs on honesty.</b> Anyone in the group can declare a winner and the result can't be changed afterwards, so only settle a bet when you're sure of the outcome.</li>
         <li><b>Names aren't locked.</b> Anyone can type any name, so use names your group recognises.</li>
         <li><b>It's all fake.</b> The numbers are just for bragging rights.</li>
       </ul>
@@ -166,12 +201,19 @@ if (!token) {
   token = Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('');
   store.set('wtb_token', token);
 }
-let mine = store.get('wtb_mine', []);          // offers made on this device
-let D = { bets: [], takes: [], byBet: {} };
-let selTopic = null, p1 = '', p2 = '';
+let mine = store.get('wtb_mine', []);            // offers made on this device
+let group = store.get('wtb_group', 'public');    // current group code
+let groups = store.get('wtb_groups', []);        // joined groups [{code, name}]
+let D = { group: null, cats: [], bets: [], takes: [], byBet: {} };
+let selTopic = null, p1 = '', p2 = '', topicFilter = 'all', pendingTopic = null;
+
+const fmt = d => new Date(d).toLocaleString([], { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+const isClosed = x => !!x.closes_at && new Date(x.closes_at) <= new Date();
 const leftOf = x => x.max_payout - (D.byBet[x.id] || []).reduce((s, k) => s + k.payout, 0);
-const active = x => x.status === 'open' && (leftOf(x) > 0 || (D.byBet[x.id] || []).some(k => !k.winner));
+const active = x => x.status === 'open' && ((!isClosed(x) && leftOf(x) > 0) || (D.byBet[x.id] || []).some(k => !k.winner));
 const who = (x, k, w) => w === 'creator' ? x.creator : k.taker;
+const catName = id => (D.cats.find(c => c.id === id) || {}).name || 'General';
+const inFilter = x => topicFilter === 'all' || (topicFilter === 'general' ? !x.category_id : String(x.category_id) === String(topicFilter));
 
 $('name').value = store.get('wtb_name', '');
 $('name').onchange = () => store.set('wtb_name', $('name').value.trim());
@@ -196,17 +238,88 @@ window.onhashchange = route;
 
 function openDetails(t) { selTopic = t; location.hash = '#details'; }
 
+/* ---------- groups ---------- */
+const groupLink = () => location.origin + location.pathname + '?g=' + group;
+
+function renderGroupBar() {
+  const list = [{ code: 'public', name: 'Everyone (public)' }, ...groups];
+  $('groupSel').innerHTML = list.map(g => `<option value="${esc(g.code)}">${esc(g.name)}</option>`).join('');
+  $('groupSel').value = group;
+  $('groupInfo').innerHTML = group === 'public'
+    ? 'This is the public group, so everyone can see these bets. Create a group for a private space.'
+    : `Invite people with this link: <b>${esc(groupLink())}</b> <button class="grey" onclick="copyLink()">Copy link</button>`;
+}
+
+function copyLink() {
+  const link = groupLink();
+  if (navigator.clipboard) navigator.clipboard.writeText(link).then(() => alert('Link copied'), () => prompt('Copy this link:', link));
+  else prompt('Copy this link:', link);
+}
+
+function switchGroup(code) {
+  group = code; store.set('wtb_group', code);
+  D = { group: null, cats: [], bets: [], takes: [], byBet: {} };
+  selTopic = null; p1 = ''; p2 = ''; topicFilter = 'all';
+  renderGroupBar(); renderHome(); load();
+}
+
+async function joinByCode(code) {
+  const { data, error } = await sb.rpc('load_group', { p_code: code });
+  if (error || !data) { alert('Group not found. Check the link or code.'); return false; }
+  if (code !== 'public' && !groups.some(g => g.code === code)) {
+    groups.push({ code, name: data.group.name }); store.set('wtb_groups', groups);
+  }
+  switchGroup(code);
+  return true;
+}
+
+async function createGroup() {
+  const name = $('newGroup').value.trim();
+  if (!name) return alert('Type a name for your group');
+  const { data, error } = await sb.rpc('create_group', { p_name: name });
+  if (error) return alert(error.message);
+  groups.push({ code: data, name }); store.set('wtb_groups', groups);
+  $('newGroup').value = ''; $('groupDet').open = false;
+  switchGroup(data);
+}
+
+async function joinGroup() {
+  const raw = $('joinCode').value.trim();
+  if (!raw) return alert('Paste a group link or code');
+  const m = raw.match(/[?&]g=([A-Za-z0-9]+)/);
+  if (await joinByCode(m ? m[1] : raw)) { $('joinCode').value = ''; $('groupDet').open = false; }
+}
+
+/* ---------- actions ---------- */
+async function addTopic() {
+  const n = $('newTopic').value.trim();
+  if (!n) return alert('Type a topic name');
+  const { data, error } = await sb.rpc('create_category', { p_code: group, p_name: n });
+  if (error) return alert(error.message);
+  $('newTopic').value = ''; $('topicDet').open = false;
+  pendingTopic = data;
+  load();
+}
+
 async function makeOffer() {
   const name = myName(); if (!name) return;
   const odds = parseFloat($('odds').value), max = parseInt($('max').value);
   if (!$('stmt').value.trim()) return alert('Write what you are betting on');
   if (!(odds > 0) || !(max > 0)) return alert('Enter the odds and the most you will pay out');
+  let closes = null;
+  if ($('closes').value) {
+    const d = new Date($('closes').value);
+    if (isNaN(d) || d <= new Date()) return alert('Pick a closing time in the future');
+    closes = d.toISOString();
+  }
+  const cat = $('offerTopic').value ? parseInt($('offerTopic').value) : null;
   const { data, error } = await sb.rpc('create_offer', {
-    p_name: name, p_statement: $('stmt').value, p_odds: odds, p_max: max, p_token: token
+    p_code: group, p_name: name, p_statement: $('stmt').value, p_odds: odds, p_max: max,
+    p_token: token, p_category: cat, p_closes: closes
   });
   if (error) return alert(error.message);
   mine.push(data); store.set('wtb_mine', mine);
-  $('stmt').value = ''; $('odds').value = ''; $('max').value = '';
+  $('stmt').value = ''; $('odds').value = ''; $('max').value = ''; $('closes').value = '';
   load();
 }
 
@@ -215,7 +328,7 @@ async function counter(t) {
   const odds = parseFloat($('co' + t).value), max = parseInt($('cm' + t).value);
   if (!(odds > 0) || !(max > 0)) return alert('Enter your odds and the most you will pay out');
   const { data, error } = await sb.rpc('counter_offer', {
-    p_topic: t, p_name: name, p_odds: odds, p_max: max, p_token: token
+    p_code: group, p_topic: t, p_name: name, p_odds: odds, p_max: max, p_token: token
   });
   if (error) return alert(error.message);
   mine.push(data); store.set('wtb_mine', mine);
@@ -226,13 +339,13 @@ async function take(id) {
   const name = myName(); if (!name) return;
   const stake = parseInt($('s' + id).value);
   if (!(stake > 0)) return alert('Enter how much you want to bet');
-  const { error } = await sb.rpc('take_offer', { p_id: id, p_name: name, p_stake: stake, p_token: token });
+  const { error } = await sb.rpc('take_offer', { p_code: group, p_id: id, p_name: name, p_stake: stake, p_token: token });
   if (error) alert(error.message);
   load();
 }
 
 async function settle(id, winner) {
-  const { error } = await sb.rpc('settle_take', { p_take: id, p_winner: winner });
+  const { error } = await sb.rpc('settle_take', { p_code: group, p_take: id, p_winner: winner });
   if (error) alert(error.message);
   load();
 }
@@ -243,24 +356,44 @@ async function owner(fn, id) {
   load();
 }
 
+/* ---------- loading ---------- */
 async function load() {
-  const [b, t] = await Promise.all([
-    sb.from('bets').select('*').order('id', { ascending: false }),
-    sb.from('takes').select('*').order('id')
-  ]);
-  if (b.error || t.error) return;
+  const code = group;
+  const { data, error } = await sb.rpc('load_group', { p_code: code });
+  if (code !== group || error) return;
+  if (!data) {
+    if (code !== 'public') {
+      groups = groups.filter(g => g.code !== code); store.set('wtb_groups', groups);
+      alert('That group no longer exists, so you are back in the public group.');
+      switchGroup('public');
+    }
+    return;
+  }
   const byBet = {};
-  t.data.forEach(k => (byBet[k.bet_id] = byBet[k.bet_id] || []).push(k));
-  D = { bets: b.data, takes: t.data, byBet };
+  data.takes.forEach(k => (byBet[k.bet_id] = byBet[k.bet_id] || []).push(k));
+  D = { group: data.group, cats: data.categories, bets: data.bets, takes: data.takes, byBet };
   renderHome();
   if (!$('details').hidden) renderDetails();
 }
 
+/* ---------- home ---------- */
 function renderHome() {
   const { bets, takes, byBet } = D;
   const byId = Object.fromEntries(bets.map(x => [x.id, x]));
 
-  // Leaderboard
+  // topic selects
+  const cur = pendingTopic != null ? String(pendingTopic) : $('offerTopic').value;
+  pendingTopic = null;
+  $('offerTopic').innerHTML = '<option value="">General</option>' + D.cats.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
+  $('offerTopic').value = cur;
+  if ($('offerTopic').selectedIndex < 0) $('offerTopic').selectedIndex = 0;
+
+  $('topicFilter').innerHTML = '<option value="all">All topics</option><option value="general">General</option>' +
+    D.cats.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
+  $('topicFilter').value = topicFilter;
+  if ($('topicFilter').selectedIndex < 0) { topicFilter = 'all'; $('topicFilter').value = 'all'; }
+
+  // Leaderboard (whole group)
   const net = {}, label = {};
   const add = (n, v) => { const k = n.toLowerCase(); label[k] = label[k] || n; net[k] = (net[k] || 0) + v; };
   takes.filter(k => k.winner).forEach(k => {
@@ -269,27 +402,30 @@ function renderHome() {
     else { add(x.creator, -k.payout); add(k.taker, k.payout); }
   });
 
-  // Bets awaiting a result (anyone can settle)
-  const waitHtml = takes.filter(k => !k.winner).sort((a, c) => c.id - a.id).map(k => {
-    const x = byId[k.bet_id]; if (!x) return '';
-    return `<div class="card"><b>${esc(x.statement)}</b>
-      <div class="small">${esc(x.creator)} offered ${Number(x.odds)} · ${esc(k.taker)} bet ${k.stake}</div>
+  // Ready to settle (closed, or no closing time)
+  const readyHtml = takes.filter(k => !k.winner).sort((a, c) => c.id - a.id).map(k => {
+    const x = byId[k.bet_id];
+    if (!x || !inFilter(x) || (x.closes_at && !isClosed(x))) return '';
+    return `<div class="card"><b>${esc(x.statement)}</b><span class="tag">${esc(catName(x.category_id))}</span>
+      <div class="small">${esc(x.creator)} offered ${Number(x.odds)} · ${esc(k.taker)} bet ${k.stake}${x.closes_at ? ' · closed ' + fmt(x.closes_at) : ''}</div>
       <div class="small">If ${esc(x.creator)} wins, ${esc(k.taker)} pays ${k.stake}. If ${esc(k.taker)} wins, ${esc(x.creator)} pays ${k.payout}.</div>
       <div class="row">
         <button onclick="if(confirm('Declare this result? It cannot be changed.'))settle(${k.id},'creator')">${esc(x.creator)} won</button>
         <button onclick="if(confirm('Declare this result? It cannot be changed.'))settle(${k.id},'taker')">${esc(k.taker)} won</button>
       </div></div>`;
   }).join('');
-  $('mybets').innerHTML = waitHtml ? '<h2>Bets awaiting a result</h2>' + waitHtml : '';
+  $('ready').innerHTML = readyHtml ? '<h2>Ready to settle</h2>' + readyHtml : '';
 
   // Open offers
   const row = x => {
     const ts = byBet[x.id] || [], left = leftOf(x), maxStake = Math.floor(left / x.odds + 1e-9);
     let h = `<div class="offer"><b>${esc(x.creator)}</b> pays ${Number(x.odds)} for every 1 bet · ${left} of ${x.max_payout} left`;
     h += ts.map(k => `<div class="small">• ${esc(k.taker)} bet ${k.stake} to win ${k.payout} · ${k.winner ? '<b>' + esc(who(x, k, k.winner)) + ' won</b>' : 'awaiting result'}</div>`).join('');
-    h += maxStake >= 1
-      ? `<div class="row"><input id="s${x.id}" type="number" min="1" max="${maxStake}" placeholder="Your bet (up to ${maxStake})"><button onclick="take(${x.id})">Bet</button></div>`
-      : '<div class="small"><b>Fully taken</b></div>';
+    h += isClosed(x)
+      ? '<div class="small"><b>Betting closed</b></div>'
+      : maxStake >= 1
+        ? `<div class="row"><input id="s${x.id}" type="number" min="1" max="${maxStake}" placeholder="Your bet (up to ${maxStake})"><button onclick="take(${x.id})">Bet</button></div>`
+        : '<div class="small"><b>Fully taken</b></div>';
     if (mine.includes(x.id) && !ts.length) h += `<button class="grey" onclick="owner('cancel_offer',${x.id})">Cancel offer</button>`;
     return h + '</div>';
   };
@@ -300,37 +436,40 @@ function renderHome() {
   let open = '';
   topics.forEach((offers, t) => {
     const live = offers.filter(active);
-    if (!live.length) return;
     const first = offers.find(o => o.id === t) || offers[offers.length - 1];
-    const best = Math.max(0, ...live.filter(o => leftOf(o) > 0).map(o => Number(o.odds)));
-    open += `<div class="card"><b>${esc(first.statement)}</b>
+    if (!live.length || !inFilter(first)) return;
+    const best = Math.max(0, ...live.filter(o => !isClosed(o) && leftOf(o) > 0).map(o => Number(o.odds)));
+    open += `<div class="card"><b>${esc(first.statement)}</b><span class="tag">${esc(catName(first.category_id))}</span>
+      ${first.closes_at ? `<div class="small">${isClosed(first) ? 'Betting closed' : 'Betting closes'} ${fmt(first.closes_at)}</div>` : ''}
       ${live.sort((a, c) => c.odds - a.odds).map(row).join('')}
-      <details><summary>Offer your own odds</summary>
+      ${isClosed(first) ? '' : `<details><summary>Offer your own odds</summary>
         <div class="row">
           <input id="co${t}" type="number" min="0.1" step="0.1" placeholder="${best ? 'Your odds (best now ' + best + ')' : 'Your odds'}">
           <input id="cm${t}" type="number" min="1" placeholder="Most you'll pay out">
         </div>
         <button onclick="counter(${t})">Post offer</button>
-      </details>
+      </details>`}
       <button class="grey" onclick="openDetails(${t})">Odds history</button></div>`;
   });
 
   // Settled bets
   const settled = takes.filter(k => k.winner).sort((a, c) => c.id - a.id).map(k => {
-    const x = byId[k.bet_id]; if (!x) return '';
+    const x = byId[k.bet_id];
+    if (!x || !inFilter(x)) return '';
     const w = who(x, k, k.winner), l = who(x, k, k.winner === 'creator' ? 'taker' : 'creator');
     const amt = k.winner === 'creator' ? k.stake : k.payout;
-    return `<div class="card"><b>${esc(x.statement)}</b>
+    return `<div class="card"><b>${esc(x.statement)}</b><span class="tag">${esc(catName(x.category_id))}</span>
       <div class="small">${esc(x.creator)} offered ${Number(x.odds)} · ${esc(k.taker)} bet ${k.stake}</div>
       <div class="offer"><b>${esc(w)} won ${amt}</b> (${esc(l)} lost ${amt})</div></div>`;
   }).join('');
 
-  $('open').innerHTML = open || '<p class="small">No open offers yet. Make the first one!</p>';
+  $('open').innerHTML = open || '<p class="small">No open offers here yet. Make the first one!</p>';
   $('done').innerHTML = settled || '<p class="small">Nothing settled yet.</p>';
   $('board').innerHTML = Object.keys(net).sort((a, c) => net[c] - net[a])
     .map(k => `<div>${esc(label[k])}: ${net[k] > 0 ? '+' : ''}${net[k]}</div>`).join('') || '<span class="small">No settled bets yet.</span>';
 }
 
+/* ---------- details ---------- */
 function renderDetails() {
   const { bets, takes } = D;
   const byId = Object.fromEntries(bets.map(x => [x.id, x]));
@@ -356,7 +495,9 @@ function renderDetails() {
     const line = vals.map((v, i) => `${X(i)},${Y(v)}`).join(' ');
     const dots = vals.map((v, i) =>
       `<circle cx="${X(i)}" cy="${Y(v)}" r="4" fill="#2563eb"/><text x="${X(i)}" y="${Y(v) - 9}" font-size="12" text-anchor="middle" fill="#222">${v}</text>`).join('');
-    const status = o => o.status === 'cancelled' ? 'Cancelled' : active(o) ? 'Open' : 'Complete';
+    const status = o => o.status === 'cancelled' ? 'Cancelled'
+      : isClosed(o) ? (active(o) ? 'Closed, awaiting result' : 'Closed')
+      : active(o) ? 'Open' : 'Complete';
     $('odds2').innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto"><polyline points="${line}" fill="none" stroke="#2563eb" stroke-width="2"/>${dots}</svg>
       <div class="small">Each dot is an offer on this bet, oldest on the left. Higher odds pay more.</div>
       <div class="scroll"><table><tr><th>Posted</th><th>By</th><th>Odds</th><th>Max payout</th><th>Taken</th><th>Status</th></tr>
@@ -404,8 +545,17 @@ setInterval(() => {
   const a = document.activeElement.tagName;
   if (a !== 'INPUT' && a !== 'SELECT' && !document.querySelector('details[open]')) load();
 }, 15000);
-route();
-load();
+
+(async function init() {
+  const c = new URLSearchParams(location.search).get('g');
+  if (c) {
+    await joinByCode(c);
+    history.replaceState(null, '', location.pathname + location.hash);
+  }
+  renderGroupBar();
+  route();
+  load();
+})();
 </script>
 </body>
 </html>

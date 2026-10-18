@@ -68,12 +68,13 @@
       </div>
       <div class="small">Odds 2 means: if someone bets 1 and you lose, you pay out 2. "Most you'll pay out" is your total limit across everyone who bets.</div>
       <div class="row">
-        <div style="flex:1"><div class="small">Topic</div><select id="offerTopic"></select></div>
-        <div style="flex:1"><div class="small">Betting closes (optional)</div><input id="closes" type="datetime-local"></div>
+        <div style="flex:1"><div class="small">Topic</div><select id="offerTopic" onchange="fillSubs('')"></select></div>
+        <div style="flex:1"><div class="small">Subtopic</div><select id="offerSub" onchange="$('subOther').hidden=this.value!=='__other'"></select></div>
       </div>
-      <details id="topicDet"><summary>Add a new topic</summary>
-        <div class="row"><input id="newTopic" placeholder="New topic (e.g. NRL)" maxlength="30"><button onclick="addTopic()">Add</button></div>
-      </details>
+      <input id="topicOther" placeholder="Type your own topic" maxlength="40" hidden>
+      <input id="subOther" placeholder="Type your own subtopic" maxlength="40" hidden>
+      <div class="small">Betting closes (optional)</div>
+      <input id="closes" type="datetime-local">
       <div class="small">Nobody can bet after the closing time, and the bet can be settled once it has passed.</div>
       <button onclick="makeOffer()">Post offer</button>
     </div>
@@ -81,7 +82,10 @@
     <div id="ready"></div>
 
     <h2>Open offers</h2>
-    <select id="topicFilter" onchange="topicFilter=this.value;renderHome()"></select>
+    <div class="row">
+      <select id="topicFilter" onchange="topicFilter=this.value;subFilter='all';renderHome()"></select>
+      <select id="subFilter" onchange="subFilter=this.value;renderHome()" hidden></select>
+    </div>
     <div id="open"></div>
     <h2>Settled bets</h2><div id="done"></div>
     <h2>Leaderboard</h2><div id="board" class="card"></div>
@@ -113,7 +117,7 @@
 
     <div class="card">
       <h3>1. Pick a group</h3>
-      <p>Everything on the site lives inside a group, and each group has its own bets, topics and leaderboard.</p>
+      <p>Everything on the site lives inside a group, and each group has its own bets and leaderboard.</p>
       <ul>
         <li><b>Everyone (public)</b> is the default group. Anyone can see it, and it's where you land if you don't join another group.</li>
         <li><b>Create a group</b> under <i>Create or join a group</i> to get a private space. You'll get an invite link to share.</li>
@@ -133,7 +137,7 @@
       <ul>
         <li><b>Odds:</b> how much you'll pay out for every 1 someone bets against you.</li>
         <li><b>Most you'll pay out:</b> your total limit across everyone who bets.</li>
-        <li><b>Topic:</b> a category such as NRL or Work. Use <i>Add a new topic</i> to create one. Anyone in the group can add topics, and you can filter Home by topic.</li>
+        <li><b>Topic and subtopic:</b> pick from the list, such as Sport then NRL. If yours isn't there, choose <i>Other (type your own)</i> and it will appear in the list for everyone in the group.</li>
         <li><b>Betting closes (optional):</b> after this time nobody can bet. Leave it blank for no closing time.</li>
       </ul>
       <div class="eg">
@@ -148,11 +152,12 @@
     <div class="card">
       <h3>4. Bet against an offer</h3>
       <p>Find an offer you disagree with, type how much you want to bet (any amount up to what's left), and click <b>Bet</b>. Several people can each take a piece of the same offer until the limit is used up. You can't bet against your own offer, and you can't bet once betting has closed.</p>
+      <p>Use the topic dropdowns above <b>Open offers</b> to show just one topic. They only list topics that have bets in your group.</p>
     </div>
 
     <div class="card">
       <h3>5. Offer your own odds</h3>
-      <p>Want to back the same statement at different odds? Click <b>Offer your own odds</b> under any bet to post your own offer on it. Your odds can be higher or lower than the others. All the offers on a bet are listed together with the best odds first, and the person betting chooses whichever one they like. Each offer has its own limit and shares the same closing time.</p>
+      <p>Want to back the same statement at different odds? Click <b>Offer your own odds</b> under any bet to post your own offer on it. Your odds can be higher or lower than the others. All the offers on a bet are listed together with the best odds first, and the person betting chooses whichever one they like. Each offer has its own limit and shares the same topic and closing time.</p>
     </div>
 
     <div class="card">
@@ -196,6 +201,31 @@ const store = {
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
 };
 
+// Default topics and subtopics. Add or remove items here to change the list.
+const TOPICS = {
+  'Sport': ['NRL', 'State of Origin', 'NRLW', 'AFL', 'AFLW', 'Cricket', 'Big Bash', 'The Ashes', 'Rugby union', 'Soccer', 'A-League', 'Premier League', 'Champions League', 'World Cup', 'NBA', 'NBL', 'NFL', 'Baseball', 'Netball', 'Tennis', 'Golf', 'Formula 1', 'MotoGP', 'Supercars', 'Horse racing', 'Melbourne Cup', 'Olympics', 'Commonwealth Games', 'Boxing', 'UFC / MMA', 'Cycling', 'Surfing', 'Swimming', 'Athletics', 'Esports'],
+  'Politics': ['Federal politics', 'State politics', 'Local government', 'US politics', 'UK politics', 'World leaders', 'Elections', 'Polls', 'Referendums', 'Laws and policy'],
+  'Economy and markets': ['Interest rates', 'Inflation', 'ASX', 'Share prices', 'Property prices', 'Crypto', 'Currencies', 'Oil and commodities', 'Jobs and unemployment', 'Petrol prices'],
+  'Business': ['Company results', 'Takeovers', 'CEOs and leadership', 'Start-ups', 'Retail', 'Banks', 'Airlines', 'Product launches'],
+  'Entertainment': ['Movies', 'TV shows', 'Streaming', 'Reality TV', 'Awards', 'Box office', 'Celebrities', 'Books', 'Theatre and comedy'],
+  'Music': ['Charts', 'Albums', 'Concerts and tours', 'Festivals', 'Eurovision', 'Music awards', 'Bands and artists'],
+  'Technology': ['AI', 'Phones and gadgets', 'Social media', 'Video games', 'Software', 'Electric vehicles', 'Cyber security', 'Space tech'],
+  'Science and space': ['Space missions', 'Astronomy', 'Climate', 'Medicine', 'Discoveries', 'Energy'],
+  'Weather and nature': ['Rain', 'Temperature', 'Storms and floods', 'Bushfires', 'Snow', 'Animals and wildlife'],
+  'World events': ['News', 'Wars and conflicts', 'Natural disasters', 'Royals', 'Crime and courts', 'Global summits'],
+  'Work and office': ['Deadlines', 'Meetings', 'Projects', 'Promotions', 'Office life', 'Sales targets'],
+  'Education': ['Exams', 'Grades', 'University', 'School'],
+  'Family and friends': ['Birthdays', 'Weddings', 'Babies', 'Social plans', 'Holidays together', 'Who will be late'],
+  'Personal goals': ['Fitness', 'Weight and health goals', 'Habits', 'Challenges', 'Money goals', 'Quitting things'],
+  'Food and drink': ['Restaurants', 'Cooking shows', 'Recipes', 'Coffee and tea', 'Food prices'],
+  'Travel': ['Flights', 'Destinations', 'Holidays', 'Road trips', 'Events and festivals'],
+  'Games and competitions': ['Board games', 'Card games', 'Poker', 'Trivia and quizzes', 'Fantasy sports', 'Tipping comps', 'Bingo and raffles'],
+  'Cars and transport': ['Road', 'Public transport', 'Electric cars', 'Motor racing', 'Traffic'],
+  'Home and property': ['Renovations', 'Moving', 'Real estate', 'Gardening', 'Rent'],
+  'Pets and animals': ['Dogs', 'Cats', 'Wildlife', 'Pet events'],
+  'Fashion and culture': ['Fashion', 'Trends', 'Art', 'Festivals', 'Social media trends']
+};
+
 let token = store.get('wtb_token', null);
 if (!token) {
   token = Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('');
@@ -204,16 +234,28 @@ if (!token) {
 let mine = store.get('wtb_mine', []);            // offers made on this device
 let group = store.get('wtb_group', 'public');    // current group code
 let groups = store.get('wtb_groups', []);        // joined groups [{code, name}]
-let D = { group: null, cats: [], bets: [], takes: [], byBet: {} };
-let selTopic = null, p1 = '', p2 = '', topicFilter = 'all', pendingTopic = null;
+let D = { group: null, bets: [], takes: [], byBet: {} };
+let selTopic = null, p1 = '', p2 = '', topicFilter = 'all', subFilter = 'all';
 
 const fmt = d => new Date(d).toLocaleString([], { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
 const isClosed = x => !!x.closes_at && new Date(x.closes_at) <= new Date();
 const leftOf = x => x.max_payout - (D.byBet[x.id] || []).reduce((s, k) => s + k.payout, 0);
 const active = x => x.status === 'open' && ((!isClosed(x) && leftOf(x) > 0) || (D.byBet[x.id] || []).some(k => !k.winner));
 const who = (x, k, w) => w === 'creator' ? x.creator : k.taker;
-const catName = id => (D.cats.find(c => c.id === id) || {}).name || 'General';
-const inFilter = x => topicFilter === 'all' || (topicFilter === 'general' ? !x.category_id : String(x.category_id) === String(topicFilter));
+const tagOf = x => x.category ? esc(x.category) + (x.subcategory ? ' › ' + esc(x.subcategory) : '') : 'General';
+
+const has = (list, v) => list.some(x => x.toLowerCase() === String(v).toLowerCase());
+const canon = (list, v) => list.find(x => x.toLowerCase() === v.toLowerCase()) || v;
+const subsOf = t => Object.prototype.hasOwnProperty.call(TOPICS, t) ? TOPICS[t] : [];
+const topicNames = () => [...Object.keys(TOPICS), ...new Set(D.bets.map(b => b.category).filter(c => c && !has(Object.keys(TOPICS), c)))];
+const allSubs = t => [...subsOf(t), ...new Set(D.bets.filter(b => b.category === t && b.subcategory && !has(subsOf(t), b.subcategory)).map(b => b.subcategory))];
+
+const inFilter = x => {
+  if (topicFilter === 'all') return true;
+  if (topicFilter === 'general') return !x.category;
+  if ((x.category || '').toLowerCase() !== topicFilter.toLowerCase()) return false;
+  return subFilter === 'all' || (x.subcategory || '').toLowerCase() === subFilter.toLowerCase();
+};
 
 $('name').value = store.get('wtb_name', '');
 $('name').onchange = () => store.set('wtb_name', $('name').value.trim());
@@ -258,8 +300,8 @@ function copyLink() {
 
 function switchGroup(code) {
   group = code; store.set('wtb_group', code);
-  D = { group: null, cats: [], bets: [], takes: [], byBet: {} };
-  selTopic = null; p1 = ''; p2 = ''; topicFilter = 'all';
+  D = { group: null, bets: [], takes: [], byBet: {} };
+  selTopic = null; p1 = ''; p2 = ''; topicFilter = 'all'; subFilter = 'all';
   renderGroupBar(); renderHome(); load();
 }
 
@@ -291,35 +333,31 @@ async function joinGroup() {
 }
 
 /* ---------- actions ---------- */
-async function addTopic() {
-  const n = $('newTopic').value.trim();
-  if (!n) return alert('Type a topic name');
-  const { data, error } = await sb.rpc('create_category', { p_code: group, p_name: n });
-  if (error) return alert(error.message);
-  $('newTopic').value = ''; $('topicDet').open = false;
-  pendingTopic = data;
-  load();
-}
-
 async function makeOffer() {
   const name = myName(); if (!name) return;
   const odds = parseFloat($('odds').value), max = parseInt($('max').value);
   if (!$('stmt').value.trim()) return alert('Write what you are betting on');
   if (!(odds > 0) || !(max > 0)) return alert('Enter the odds and the most you will pay out');
+
+  let cat = $('offerTopic').value, sub = $('offerSub').value;
+  if (cat === '__other') { cat = $('topicOther').value.trim(); if (!cat) return alert('Type your topic name'); }
+  if (sub === '__other') { sub = $('subOther').value.trim(); if (!sub) return alert('Type your subtopic name'); }
+  if (cat) { cat = canon(topicNames(), cat); if (sub) sub = canon(allSubs(cat), sub); } else sub = '';
+
   let closes = null;
   if ($('closes').value) {
     const d = new Date($('closes').value);
     if (isNaN(d) || d <= new Date()) return alert('Pick a closing time in the future');
     closes = d.toISOString();
   }
-  const cat = $('offerTopic').value ? parseInt($('offerTopic').value) : null;
   const { data, error } = await sb.rpc('create_offer', {
     p_code: group, p_name: name, p_statement: $('stmt').value, p_odds: odds, p_max: max,
-    p_token: token, p_category: cat, p_closes: closes
+    p_token: token, p_cat: cat || null, p_sub: sub || null, p_closes: closes
   });
   if (error) return alert(error.message);
   mine.push(data); store.set('wtb_mine', mine);
   $('stmt').value = ''; $('odds').value = ''; $('max').value = ''; $('closes').value = '';
+  $('topicOther').value = ''; $('subOther').value = ''; $('offerTopic').value = ''; fillSubs('');
   load();
 }
 
@@ -371,9 +409,51 @@ async function load() {
   }
   const byBet = {};
   data.takes.forEach(k => (byBet[k.bet_id] = byBet[k.bet_id] || []).push(k));
-  D = { group: data.group, cats: data.categories, bets: data.bets, takes: data.takes, byBet };
+  D = { group: data.group, bets: data.bets, takes: data.takes, byBet };
   renderHome();
   if (!$('details').hidden) renderDetails();
+}
+
+/* ---------- topics ---------- */
+function fillSubs(keep) {
+  const t = $('offerTopic').value;
+  $('topicOther').hidden = t !== '__other';
+  const s0 = keep !== undefined ? keep : $('offerSub').value;
+  const subs = t && t !== '__other' ? allSubs(t) : [];
+  $('offerSub').disabled = !t;
+  $('offerSub').innerHTML = '<option value="">None</option>' + subs.map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join('') +
+    (t ? '<option value="__other">Other (type your own)…</option>' : '');
+  $('offerSub').value = s0;
+  if ($('offerSub').selectedIndex < 0) $('offerSub').selectedIndex = 0;
+  $('subOther').hidden = $('offerSub').value !== '__other';
+}
+
+function renderOfferTopics() {
+  const t0 = $('offerTopic').value, s0 = $('offerSub').value;
+  $('offerTopic').innerHTML = '<option value="">General</option>' +
+    topicNames().map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('') +
+    '<option value="__other">Other (type your own)…</option>';
+  $('offerTopic').value = t0;
+  if ($('offerTopic').selectedIndex < 0) $('offerTopic').selectedIndex = 0;
+  fillSubs(s0);
+}
+
+function renderFilters() {
+  const bets = D.bets, order = Object.keys(TOPICS);
+  const present = [...new Set(bets.map(b => b.category).filter(Boolean))]
+    .sort((a, b) => { const ia = order.indexOf(a), ib = order.indexOf(b); return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib) || a.localeCompare(b); });
+  $('topicFilter').innerHTML = '<option value="all">All topics</option>' +
+    (bets.some(b => !b.category) ? '<option value="general">General</option>' : '') +
+    present.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
+  $('topicFilter').value = topicFilter;
+  if ($('topicFilter').selectedIndex < 0) { topicFilter = 'all'; subFilter = 'all'; $('topicFilter').value = 'all'; }
+
+  const subs = topicFilter === 'all' || topicFilter === 'general' ? [] :
+    [...new Set(bets.filter(b => (b.category || '').toLowerCase() === topicFilter.toLowerCase() && b.subcategory).map(b => b.subcategory))].sort();
+  $('subFilter').hidden = !subs.length;
+  $('subFilter').innerHTML = '<option value="all">All subtopics</option>' + subs.map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join('');
+  $('subFilter').value = subFilter;
+  if ($('subFilter').selectedIndex < 0) { subFilter = 'all'; $('subFilter').value = 'all'; }
 }
 
 /* ---------- home ---------- */
@@ -381,17 +461,8 @@ function renderHome() {
   const { bets, takes, byBet } = D;
   const byId = Object.fromEntries(bets.map(x => [x.id, x]));
 
-  // topic selects
-  const cur = pendingTopic != null ? String(pendingTopic) : $('offerTopic').value;
-  pendingTopic = null;
-  $('offerTopic').innerHTML = '<option value="">General</option>' + D.cats.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
-  $('offerTopic').value = cur;
-  if ($('offerTopic').selectedIndex < 0) $('offerTopic').selectedIndex = 0;
-
-  $('topicFilter').innerHTML = '<option value="all">All topics</option><option value="general">General</option>' +
-    D.cats.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
-  $('topicFilter').value = topicFilter;
-  if ($('topicFilter').selectedIndex < 0) { topicFilter = 'all'; $('topicFilter').value = 'all'; }
+  renderOfferTopics();
+  renderFilters();
 
   // Leaderboard (whole group)
   const net = {}, label = {};
@@ -406,7 +477,7 @@ function renderHome() {
   const readyHtml = takes.filter(k => !k.winner).sort((a, c) => c.id - a.id).map(k => {
     const x = byId[k.bet_id];
     if (!x || !inFilter(x) || (x.closes_at && !isClosed(x))) return '';
-    return `<div class="card"><b>${esc(x.statement)}</b><span class="tag">${esc(catName(x.category_id))}</span>
+    return `<div class="card"><b>${esc(x.statement)}</b><span class="tag">${tagOf(x)}</span>
       <div class="small">${esc(x.creator)} offered ${Number(x.odds)} · ${esc(k.taker)} bet ${k.stake}${x.closes_at ? ' · closed ' + fmt(x.closes_at) : ''}</div>
       <div class="small">If ${esc(x.creator)} wins, ${esc(k.taker)} pays ${k.stake}. If ${esc(k.taker)} wins, ${esc(x.creator)} pays ${k.payout}.</div>
       <div class="row">
@@ -439,7 +510,7 @@ function renderHome() {
     const first = offers.find(o => o.id === t) || offers[offers.length - 1];
     if (!live.length || !inFilter(first)) return;
     const best = Math.max(0, ...live.filter(o => !isClosed(o) && leftOf(o) > 0).map(o => Number(o.odds)));
-    open += `<div class="card"><b>${esc(first.statement)}</b><span class="tag">${esc(catName(first.category_id))}</span>
+    open += `<div class="card"><b>${esc(first.statement)}</b><span class="tag">${tagOf(first)}</span>
       ${first.closes_at ? `<div class="small">${isClosed(first) ? 'Betting closed' : 'Betting closes'} ${fmt(first.closes_at)}</div>` : ''}
       ${live.sort((a, c) => c.odds - a.odds).map(row).join('')}
       ${isClosed(first) ? '' : `<details><summary>Offer your own odds</summary>
@@ -458,7 +529,7 @@ function renderHome() {
     if (!x || !inFilter(x)) return '';
     const w = who(x, k, k.winner), l = who(x, k, k.winner === 'creator' ? 'taker' : 'creator');
     const amt = k.winner === 'creator' ? k.stake : k.payout;
-    return `<div class="card"><b>${esc(x.statement)}</b><span class="tag">${esc(catName(x.category_id))}</span>
+    return `<div class="card"><b>${esc(x.statement)}</b><span class="tag">${tagOf(x)}</span>
       <div class="small">${esc(x.creator)} offered ${Number(x.odds)} · ${esc(k.taker)} bet ${k.stake}</div>
       <div class="offer"><b>${esc(w)} won ${amt}</b> (${esc(l)} lost ${amt})</div></div>`;
   }).join('');
@@ -553,6 +624,7 @@ setInterval(() => {
     history.replaceState(null, '', location.pathname + location.hash);
   }
   renderGroupBar();
+  renderOfferTopics();
   route();
   load();
 })();

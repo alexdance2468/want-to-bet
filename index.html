@@ -51,22 +51,25 @@
 
   <nav>
     <a id="nav_offers" href="#offers">Offers</a>
+    <a id="nav_ready" href="#ready">Ready to settle</a>
     <a id="nav_odds" href="#odds">Odds over time</a>
     <a id="nav_board" href="#leaderboard">Leaderboard</a>
     <a id="nav_explainer" href="#explainer">Explainer</a>
   </nav>
 
+  <div class="card" id="filterBar">
+    <div class="small">Filter by topic (applies to every page except the Explainer)</div>
+    <div class="row">
+      <select id="topicFilter" onchange="topicFilter=this.value;subFilter='all';renderAll()"></select>
+      <select id="subFilter" onchange="subFilter=this.value;renderAll()" hidden></select>
+    </div>
+  </div>
+
   <!-- PAGE: OFFERS -->
   <div id="page_offers">
     <button class="grey" onclick="$('makeOffer').scrollIntoView({behavior:'smooth'})">Make an offer ↓</button>
 
-    <div id="ready"></div>
-
     <h2>Open offers</h2>
-    <div class="row">
-      <select id="topicFilter" onchange="topicFilter=this.value;subFilter='all';renderOffers()"></select>
-      <select id="subFilter" onchange="subFilter=this.value;renderOffers()" hidden></select>
-    </div>
     <div id="open"></div>
 
     <div class="card" id="makeOffer">
@@ -94,6 +97,13 @@
       <div class="small">Nobody can bet after the closing time, and the bet can be settled once it has passed.</div>
       <button onclick="makeOffer()">Post offer</button>
     </div>
+  </div>
+
+  <!-- PAGE: READY TO SETTLE -->
+  <div id="page_ready" hidden>
+    <h2>Ready to settle</h2>
+    <div class="small">Bets appear here once betting has closed, or straight away if they have no closing time.</div>
+    <div id="ready"></div>
   </div>
 
   <!-- PAGE: ODDS OVER TIME -->
@@ -135,10 +145,12 @@
     <div class="card">
       <h3>The pages</h3>
       <ul>
-        <li><b>Offers:</b> bets ready to settle, the open offers you can bet on, and the form to make your own offer at the bottom.</li>
+        <li><b>Offers:</b> the open offers you can bet on, and the form to make your own offer at the bottom.</li>
+        <li><b>Ready to settle:</b> bets where betting has closed and the result needs to be declared. The number in brackets shows how many are waiting.</li>
         <li><b>Odds over time:</b> pick a bet to see a chart and table of every offer made on it, oldest to newest.</li>
         <li><b>Leaderboard:</b> everyone's net winnings, a head-to-head comparison of any two people, and the list of settled bets.</li>
       </ul>
+      <p>The <b>Filter by topic</b> box under the menu narrows every page except this one to a single topic, and then to a subtopic.</p>
     </div>
 
     <div class="card">
@@ -183,7 +195,6 @@
     <div class="card">
       <h3>4. Bet against an offer</h3>
       <p>Find an offer or answer you disagree with, type how much you want to bet (any amount up to what's left), and click <b>Bet</b>. Several people can each take a piece of the same offer until the limit is used up. You can't bet against your own offer, and you can't bet once betting has closed.</p>
-      <p>Use the topic dropdowns above the open offers to show just one topic. They only list topics that have bets in your group.</p>
     </div>
 
     <div class="card">
@@ -195,7 +206,7 @@
 
     <div class="card">
       <h3>6. Say who won</h3>
-      <p>Once betting has closed (or straight away if there's no closing time), the bet appears under <b>Ready to settle</b> at the top of the Offers page. <b>Anyone</b> in the group can settle it, and the result is final straight away.</p>
+      <p>Once betting has closed (or straight away if there's no closing time), the bet appears on the <b>Ready to settle</b> page. <b>Anyone</b> in the group can settle it, and the result is final straight away.</p>
       <ul>
         <li><b>Statements:</b> click the name of the winner, such as <b>Alex won</b> or <b>John won</b>. Each bet is settled separately.</li>
         <li><b>Questions:</b> click the correct answer, or <b>None of these</b>. Everyone who backed that answer wins from the people who bet against it, and everyone who backed a wrong answer pays out to the people who bet against theirs. All the bets on the question are settled together.</li>
@@ -275,6 +286,11 @@ const leftOf = x => x.max_payout - (D.byBet[x.id] || []).reduce((s, k) => s + k.
 const active = x => x.status === 'open' && ((!isClosed(x) && leftOf(x) > 0) || (D.byBet[x.id] || []).some(k => !k.winner));
 const who = (x, k, w) => w === 'creator' ? x.creator : k.taker;
 const tagOf = x => x.category ? esc(x.category) + (x.subcategory ? ' › ' + esc(x.subcategory) : '') : 'General';
+const threadsOf = bets => {
+  const m = new Map();
+  bets.forEach(x => { const t = x.topic_id || x.id; if (!m.has(t)) m.set(t, []); m.get(t).push(x); });
+  return m;
+};
 
 const has = (list, v) => list.some(x => x.toLowerCase() === String(v).toLowerCase());
 const canon = (list, v) => list.find(x => x.toLowerCase() === v.toLowerCase()) || v;
@@ -300,8 +316,8 @@ function myName() {
 }
 
 /* ---------- pages ---------- */
-const PAGES = ['offers', 'odds', 'board', 'explainer'];
-const HASH = { offers: 'offers', odds: 'odds', leaderboard: 'board', explainer: 'explainer', home: 'offers', details: 'odds' };
+const PAGES = ['offers', 'ready', 'odds', 'board', 'explainer'];
+const HASH = { offers: 'offers', ready: 'ready', odds: 'odds', leaderboard: 'board', explainer: 'explainer', home: 'offers', details: 'odds' };
 
 function route() {
   const h = location.hash.slice(1);
@@ -310,6 +326,7 @@ function route() {
     $('page_' + p).hidden = p !== page;
     $('nav_' + p).className = p === page ? 'on' : '';
   });
+  $('filterBar').hidden = page === 'explainer';
   if (page === 'odds') renderOdds();
   if (page === 'board') renderBoard();
 }
@@ -318,7 +335,9 @@ window.onhashchange = route;
 function openOdds(t) { selTopic = t; location.hash = '#odds'; }
 
 function renderAll() {
+  renderFilters();
   renderOffers();
+  renderReady();
   if (!$('page_odds').hidden) renderOdds();
   if (!$('page_board').hidden) renderBoard();
 }
@@ -524,50 +543,9 @@ function renderFilters() {
 
 /* ---------- page: offers ---------- */
 function renderOffers() {
-  const { bets, takes, byBet } = D;
-  const byId = Object.fromEntries(bets.map(x => [x.id, x]));
-  const isQThread = x => { const f = byId[x.topic_id || x.id]; return !!(f && f.answer); };
-
+  const { bets, byBet } = D;
   renderOfferTopics();
-  renderFilters();
 
-  const topics = new Map();
-  bets.forEach(x => { const t = x.topic_id || x.id; if (!topics.has(t)) topics.set(t, []); topics.get(t).push(x); });
-
-  // Ready to settle: statements, one bet at a time
-  const stmtReady = takes.filter(k => !k.winner).sort((a, c) => c.id - a.id).map(k => {
-    const x = byId[k.bet_id];
-    if (!x || isQThread(x) || !inFilter(x) || (x.closes_at && !isClosed(x))) return '';
-    return `<div class="card"><b>${esc(x.statement)}</b><span class="tag">${tagOf(x)}</span>
-      <div class="small">${esc(x.creator)} offered ${Number(x.odds)} · ${esc(k.taker)} bet ${k.stake}${x.closes_at ? ' · closed ' + fmt(x.closes_at) : ''}</div>
-      <div class="small">If ${esc(x.creator)} wins, ${esc(k.taker)} pays ${k.stake}. If ${esc(k.taker)} wins, ${esc(x.creator)} pays ${k.payout}.</div>
-      <div class="row">
-        <button onclick="if(confirm('Declare this result? It cannot be changed.'))settle(${k.id},'creator')">${esc(x.creator)} won</button>
-        <button onclick="if(confirm('Declare this result? It cannot be changed.'))settle(${k.id},'taker')">${esc(k.taker)} won</button>
-      </div></div>`;
-  }).join('');
-
-  // Ready to settle: questions, pick the correct answer
-  QA = {};
-  let qReady = '';
-  topics.forEach((offers, t) => {
-    const first = offers.find(o => o.id === t) || offers[offers.length - 1];
-    if (!first.answer || !inFilter(first) || (first.closes_at && !isClosed(first))) return;
-    const pending = offers.flatMap(o => (byBet[o.id] || []).filter(k => !k.winner));
-    if (!pending.length) return;
-    const answers = [];
-    offers.forEach(o => { if (o.answer && !has(answers, o.answer)) answers.push(o.answer); });
-    QA[t] = answers;
-    qReady += `<div class="card"><b>${esc(first.statement)}</b><span class="tag">${tagOf(first)}</span><span class="tag">Question</span>
-      <div class="small">${pending.length} bet${pending.length === 1 ? '' : 's'} waiting. Which answer was correct?</div>
-      <div class="row" style="flex-wrap:wrap">
-        ${answers.map((a, i) => `<button onclick="if(confirm('Declare this answer as correct? It cannot be changed.'))settleQ(${t},${i})">${esc(a)}</button>`).join('')}
-        <button class="grey" onclick="if(confirm('Declare that none of these answers were correct? It cannot be changed.'))settleQ(${t},-1)">None of these</button>
-      </div></div>`;
-  });
-  $('ready').innerHTML = (qReady || stmtReady) ? '<h2>Ready to settle</h2>' + qReady + stmtReady : '';
-
-  // Open offers
   const row = x => {
     const ts = byBet[x.id] || [], left = leftOf(x), maxStake = Math.floor(left / x.odds + 1e-9);
     let h = x.answer
@@ -584,7 +562,7 @@ function renderOffers() {
   };
 
   let open = '';
-  topics.forEach((offers, t) => {
+  threadsOf(bets).forEach((offers, t) => {
     const live = offers.filter(active);
     const first = offers.find(o => o.id === t) || offers[offers.length - 1];
     if (!live.length || !inFilter(first)) return;
@@ -607,19 +585,66 @@ function renderOffers() {
   $('open').innerHTML = open || '<p class="small">No open offers here yet. Make the first one using the form at the bottom of this page.</p>';
 }
 
+/* ---------- page: ready to settle ---------- */
+function renderReady() {
+  const { bets, takes, byBet } = D;
+  const byId = Object.fromEntries(bets.map(x => [x.id, x]));
+  const isQThread = x => { const f = byId[x.topic_id || x.id]; return !!(f && f.answer); };
+
+  // statements: one bet at a time
+  const stmtItems = takes.filter(k => !k.winner).sort((a, c) => c.id - a.id)
+    .map(k => [k, byId[k.bet_id]])
+    .filter(([k, x]) => x && !isQThread(x) && !(x.closes_at && !isClosed(x)));
+
+  // questions: pick the correct answer
+  const qItems = [];
+  threadsOf(bets).forEach((offers, t) => {
+    const first = offers.find(o => o.id === t) || offers[offers.length - 1];
+    if (!first.answer || (first.closes_at && !isClosed(first))) return;
+    const pending = offers.flatMap(o => (byBet[o.id] || []).filter(k => !k.winner));
+    if (pending.length) qItems.push([t, first, offers, pending]);
+  });
+
+  const total = stmtItems.length + qItems.length;
+  $('nav_ready').textContent = 'Ready to settle' + (total ? ` (${total})` : '');
+
+  QA = {};
+  const qHtml = qItems.filter(([t, first]) => inFilter(first)).map(([t, first, offers, pending]) => {
+    const answers = [];
+    offers.forEach(o => { if (o.answer && !has(answers, o.answer)) answers.push(o.answer); });
+    QA[t] = answers;
+    return `<div class="card"><b>${esc(first.statement)}</b><span class="tag">${tagOf(first)}</span><span class="tag">Question</span>
+      <div class="small">${pending.length} bet${pending.length === 1 ? '' : 's'} waiting. Which answer was correct?</div>
+      <div class="row" style="flex-wrap:wrap">
+        ${answers.map((a, i) => `<button onclick="if(confirm('Declare this answer as correct? It cannot be changed.'))settleQ(${t},${i})">${esc(a)}</button>`).join('')}
+        <button class="grey" onclick="if(confirm('Declare that none of these answers were correct? It cannot be changed.'))settleQ(${t},-1)">None of these</button>
+      </div></div>`;
+  }).join('');
+
+  const stmtHtml = stmtItems.filter(([k, x]) => inFilter(x)).map(([k, x]) =>
+    `<div class="card"><b>${esc(x.statement)}</b><span class="tag">${tagOf(x)}</span>
+      <div class="small">${esc(x.creator)} offered ${Number(x.odds)} · ${esc(k.taker)} bet ${k.stake}${x.closes_at ? ' · closed ' + fmt(x.closes_at) : ''}</div>
+      <div class="small">If ${esc(x.creator)} wins, ${esc(k.taker)} pays ${k.stake}. If ${esc(k.taker)} wins, ${esc(x.creator)} pays ${k.payout}.</div>
+      <div class="row">
+        <button onclick="if(confirm('Declare this result? It cannot be changed.'))settle(${k.id},'creator')">${esc(x.creator)} won</button>
+        <button onclick="if(confirm('Declare this result? It cannot be changed.'))settle(${k.id},'taker')">${esc(k.taker)} won</button>
+      </div></div>`).join('');
+
+  $('ready').innerHTML = (qHtml + stmtHtml) || '<p class="small">Nothing is ready to settle right now.</p>';
+}
+
 /* ---------- page: odds over time ---------- */
 function renderOdds() {
   const { bets } = D;
   const byId = Object.fromEntries(bets.map(x => [x.id, x]));
 
-  const topics = new Map();
-  bets.forEach(x => { const t = x.topic_id || x.id; if (!topics.has(t)) topics.set(t, []); topics.get(t).push(x); });
-  const ids = [...topics.keys()];
+  const topics = threadsOf(bets);
+  const ids = [...topics.keys()].filter(t => inFilter(byId[t] || topics.get(t)[0]));
   $('topicSel').innerHTML = ids.map(t =>
     `<option value="${t}">#${t} ${esc((byId[t] || topics.get(t)[0]).statement.slice(0, 60))}</option>`).join('');
   if (!ids.includes(selTopic)) selTopic = ids[0];
 
-  if (!ids.length) { $('odds2').innerHTML = '<p class="small">No bets yet.</p>'; return; }
+  if (!ids.length) { $('odds2').innerHTML = '<p class="small">No bets here yet.</p>'; return; }
 
   $('topicSel').value = selTopic;
   const offers = topics.get(selTopic).slice().sort((a, c) => a.id - c.id);
@@ -644,7 +669,9 @@ function renderOdds() {
 
 /* ---------- page: leaderboard and head to head ---------- */
 function renderBoard() {
-  const { bets, takes } = D;
+  const bets = D.bets.filter(inFilter);
+  const ids = new Set(bets.map(x => x.id));
+  const takes = D.takes.filter(k => ids.has(k.bet_id));
   const byId = Object.fromEntries(bets.map(x => [x.id, x]));
 
   // Leaderboard
@@ -656,7 +683,7 @@ function renderBoard() {
     else { add(x.creator, -k.payout); add(k.taker, k.payout); }
   });
   $('board').innerHTML = Object.keys(net).sort((a, c) => net[c] - net[a])
-    .map(k => `<div>${esc(label[k])}: ${net[k] > 0 ? '+' : ''}${net[k]}</div>`).join('') || '<span class="small">No settled bets yet.</span>';
+    .map(k => `<div>${esc(label[k])}: ${net[k] > 0 ? '+' : ''}${net[k]}</div>`).join('') || '<span class="small">No settled bets here yet.</span>';
 
   // Head to head
   const names = {};
@@ -721,8 +748,8 @@ setInterval(() => {
     history.replaceState(null, '', location.pathname + location.hash);
   }
   renderGroupBar();
-  renderOfferTopics();
   route();
+  renderAll();
   load();
 })();
 </script>

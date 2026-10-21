@@ -210,7 +210,7 @@
         <li><b>Offers:</b> search, sort and bet on open offers, and make your own offer at the bottom.</li>
         <li><b>My bets:</b> your open offers, bets you've placed, your results, stats and badges.</li>
         <li><b>Ready to settle:</b> bets where betting has closed and the result needs to be declared. The number in brackets shows how many are waiting.</li>
-        <li><b>Odds over time:</b> pick a bet to see every offer made on it, plus its comments.</li>
+        <li><b>Odds over time:</b> pick a bet to see every offer made on it, plus its comments. For a question, each answer gets its own coloured bar and line, so you can compare their odds side by side.</li>
         <li><b>Leaderboard:</b> rankings, monthly seasons, the Hall of Fame, head to head, and settled bets.</li>
         <li><b>Activity:</b> the latest happenings, Bet of the week, Biggest upset and more.</li>
       </ul>
@@ -336,6 +336,9 @@ const TOPICS = {
   'Fashion and culture': ['Fashion', 'Trends', 'Art', 'Festivals', 'Social media trends']
 };
 
+// Colours for the answers on the Odds over time page
+const PALETTE = ['#2563eb', '#dc2626', '#16a34a', '#d97706', '#7c3aed', '#0891b2', '#db2777', '#65a30d'];
+
 let token = store.get('wtb_token', null);
 if (!token) { token = rand(); store.set('wtb_token', token); }
 let mine = store.get('wtb_mine', []);            // offers made on this device
@@ -390,8 +393,6 @@ const fmtNet = v => (v > 0 ? '+' : '') + v;
 const pct = (a, b) => b ? Math.round(100 * a / b) + '%' : '-';
 const streakTxt = s => !s.cur ? '-' : s.cur > 0 ? 'W' + s.cur : 'L' + (-s.cur);
 const formHtml = s => s.form.slice(-5).map(r => `<span class="${r === 'W' ? 'w' : 'l'}">${r}</span>`).join(' ') || '-';
-const asMe = x => mine.includes(x.id) || (me() && nameKey(x.creator) === me());
-const asBettor = k => myTakes.includes(k.id) || (me() && nameKey(k.taker) === me());
 const canUndo = (k, x) => isAdmin() || ((mine.includes(x.id) || myTakes.includes(k.id)) && (!k.settled_at || Date.now() - new Date(k.settled_at) < 48 * 3600e3));
 
 function copyText(txt, msg) {
@@ -1003,22 +1004,57 @@ function renderOdds() {
   $('topicSel').value = selTopic;
   const offers = topics.get(selTopic).slice().sort((a, c) => a.id - c.id);
   const anyAns = offers.some(o => o.answer);
-  const W = 560, H = 170, P = 28, n = offers.length;
+  const W = 560, H = 190, P = 30, n = offers.length;
   const vals = offers.map(o => Number(o.odds));
   const hi = Math.max(...vals), lo = Math.min(...vals);
   const X = i => n === 1 ? W / 2 : P + i * (W - 2 * P) / (n - 1);
   const Y = v => hi === lo ? H / 2 : H - P - (v - lo) / (hi - lo) * (H - 2 * P);
-  const line = vals.map((v, i) => `${X(i)},${Y(v)}`).join(' ');
-  const dots = vals.map((v, i) =>
-    `<circle cx="${X(i)}" cy="${Y(v)}" r="4" fill="#2563eb"/><text x="${X(i)}" y="${Y(v) - 9}" font-size="12" text-anchor="middle" fill="#222">${v}</text>`).join('');
+  const ak = s => String(s || '').trim().toLowerCase();
+  const answers = [];
+  offers.forEach(o => { if (o.answer && !answers.some(a => ak(a) === ak(o.answer))) answers.push(o.answer); });
+  const colorOf = o => PALETTE[Math.max(0, answers.findIndex(a => ak(a) === ak(o.answer))) % PALETTE.length];
   const status = o => o.status === 'cancelled' ? 'Cancelled'
     : o.status === 'settled' ? 'Settled'
     : isClosed(o) ? (active(o) ? 'Closed, awaiting result' : 'Closed')
     : active(o) ? 'Open' : 'Complete';
-  $('odds2').innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto"><polyline points="${line}" fill="none" stroke="#2563eb" stroke-width="2"/>${dots}</svg>
-    <div class="small">Each dot is an offer on this bet, oldest on the left. Higher odds pay more.</div>
+
+  let summary = '', chart = '', legend = '', caption = '';
+
+  if (anyAns) {
+    // Question with several answers: compare answers side by side, then show each one over time
+    const cur = answers.map((a, idx) => {
+      const os = offers.filter(o => ak(o.answer) === ak(a));
+      const live = os.filter(o => o.status === 'open' && !isClosed(o) && leftOf(o) > 0);
+      const pick = live.length ? live : os;
+      return { a, idx, best: Math.max(...pick.map(o => Number(o.odds))), live: live.length > 0 };
+    }).sort((x, y) => y.best - x.best);
+    const mx = Math.max(...cur.map(c => c.best));
+    summary = `<div style="margin:8px 0"><b>Current odds by answer</b>
+      ${cur.map(c => `<div class="row" style="align-items:center;margin:4px 0">
+        <div style="width:34%;overflow-wrap:anywhere">${esc(c.a)}</div>
+        <div style="flex:1;background:#e5e7eb;border-radius:4px"><div style="width:${Math.max(10, Math.round(100 * c.best / mx))}%;background:${PALETTE[c.idx % PALETTE.length]};color:#fff;padding:3px 6px;border-radius:4px;opacity:${c.live ? 1 : 0.55}">${c.best}</div></div>
+      </div>`).join('')}
+      <div class="small">Each bar shows that answer's best open offer. Higher odds mean the person backing that answer is more confident, because they pay out more to anyone who bets against it. A faded bar means that answer has no open offer left.</div></div>`;
+    const body = answers.map((a, idx) => {
+      const col = PALETTE[idx % PALETTE.length];
+      const pts = offers.map((o, i) => ak(o.answer) === ak(a) ? [X(i), Y(Number(o.odds)), Number(o.odds)] : null).filter(Boolean);
+      return (pts.length > 1 ? `<polyline points="${pts.map(p => p[0] + ',' + p[1]).join(' ')}" fill="none" stroke="${col}" stroke-width="2"/>` : '') +
+        pts.map(p => `<circle cx="${p[0]}" cy="${p[1]}" r="4" fill="${col}"/><text x="${p[0]}" y="${p[1] - 9}" font-size="12" text-anchor="middle" fill="${col}">${p[2]}</text>`).join('');
+    }).join('');
+    chart = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto">${body}</svg>`;
+    legend = `<div style="margin:4px 0">${answers.map((a, idx) => `<span style="margin-right:14px;white-space:nowrap"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${PALETTE[idx % PALETTE.length]}"></span> ${esc(a)}</span>`).join('')}</div>`;
+    caption = 'Each dot is an offer, oldest on the left, and each colour is one answer.';
+  } else {
+    const line = vals.map((v, i) => `${X(i)},${Y(v)}`).join(' ');
+    const dots = vals.map((v, i) =>
+      `<circle cx="${X(i)}" cy="${Y(v)}" r="4" fill="#2563eb"/><text x="${X(i)}" y="${Y(v) - 9}" font-size="12" text-anchor="middle" fill="#222">${v}</text>`).join('');
+    chart = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto"><polyline points="${line}" fill="none" stroke="#2563eb" stroke-width="2"/>${dots}</svg>`;
+    caption = 'Each dot is an offer on this bet, oldest on the left. Higher odds pay more.';
+  }
+
+  $('odds2').innerHTML = `${summary}${chart}${legend}<div class="small">${caption}</div>
     <div class="scroll"><table><tr><th>Posted</th><th>By</th>${anyAns ? '<th>Answer</th>' : ''}<th>Odds</th><th>Max payout</th><th>Taken</th><th>Status</th></tr>
-    ${offers.map(o => `<tr><td>${new Date(o.created_at).toLocaleString()}</td><td>${esc(o.creator)}</td>${anyAns ? `<td>${esc(o.answer || '')}</td>` : ''}<td>${Number(o.odds)}</td><td>${o.max_payout}</td><td>${o.max_payout - leftOf(o)}</td><td>${status(o)}</td></tr>`).join('')}</table></div>
+    ${offers.map(o => `<tr><td>${new Date(o.created_at).toLocaleString()}</td><td>${esc(o.creator)}</td>${anyAns ? `<td><span style="color:${colorOf(o)}">●</span> ${esc(o.answer || '')}</td>` : ''}<td>${Number(o.odds)}</td><td>${o.max_payout}</td><td>${o.max_payout - leftOf(o)}</td><td>${status(o)}</td></tr>`).join('')}</table></div>
     ${commentsHtml(selTopic, 'cx')}`;
 }
 

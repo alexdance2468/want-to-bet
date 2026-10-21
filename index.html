@@ -6,7 +6,7 @@
 <title>Want to Bet</title>
 <style>
   body{font-family:system-ui,sans-serif;background:#f4f5f7;margin:0;color:#222}
-  main{max-width:640px;margin:0 auto;padding:16px}
+  main{max-width:680px;margin:0 auto;padding:16px}
   .card{background:#fff;border-radius:10px;padding:14px;margin:10px 0;box-shadow:0 1px 3px #0002}
   input,select,button{font:inherit;padding:8px;margin:3px 0;border-radius:6px;border:1px solid #ccc}
   input,select{width:100%;box-sizing:border-box;background:#fff}
@@ -20,7 +20,7 @@
   h1{margin-bottom:0}
   .sub{color:#666;margin-bottom:12px}
   nav{display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap}
-  nav a{padding:8px 16px;border-radius:6px;background:#e5e7eb;color:#222;text-decoration:none}
+  nav a{padding:8px 14px;border-radius:6px;background:#e5e7eb;color:#222;text-decoration:none}
   nav a.on{background:#2563eb;color:#fff}
   summary{cursor:pointer;color:#2563eb;margin:8px 0 4px}
   table{width:100%;border-collapse:collapse;font-size:.9em}
@@ -30,6 +30,12 @@
   .card p{margin:6px 0}
   .card ul,.card ol{margin:6px 0;padding-left:22px}
   .eg{background:#eef4ff;border-radius:8px;padding:10px;margin:8px 0}
+  .w{color:#15803d;font-weight:600}
+  .l{color:#b91c1c;font-weight:600}
+  .badge{cursor:help;margin-right:2px}
+  .notif{background:#fffbe6;border:1px solid #f5e08a}
+  .conf{position:fixed;top:-30px;font-size:22px;pointer-events:none;z-index:99;animation:fall 2.8s linear forwards}
+  @keyframes fall{to{transform:translateY(110vh) rotate(360deg)}}
 </style>
 </head>
 <body>
@@ -45,15 +51,30 @@
       <div class="row"><input id="newGroup" placeholder="New group name" maxlength="40"><button onclick="createGroup()">Create</button></div>
       <div class="row"><input id="joinCode" placeholder="Paste a group link or code"><button onclick="joinGroup()">Join</button></div>
     </details>
+    <details id="adminDet" hidden><summary>Admin tools (group creator)</summary>
+      <div class="small">Rename a topic</div>
+      <div class="row"><select id="renOld"></select><input id="renNew" placeholder="New name" maxlength="40"><button onclick="adminRename()">Rename</button></div>
+      <div class="small">Release a claimed name (for example if someone forgot their PIN)</div>
+      <div class="row"><input id="relName" placeholder="Name" maxlength="30"><button onclick="adminRelease()">Release</button></div>
+    </details>
     <div style="margin-top:10px"><b>Your name</b></div>
-    <input id="name" placeholder="Type your name (used for offers and bets)" maxlength="30">
+    <input id="name" placeholder="Type your name (used for offers and bets)" maxlength="30" oninput="nameInput()" onchange="renderAll()">
+    <div class="small" id="nameInfo"></div>
+    <div class="row" id="pinRow" hidden>
+      <input id="pin" type="password" placeholder="PIN (4 or more characters)" maxlength="20">
+      <button id="pinBtn" onclick="pinAction()">Claim name</button>
+    </div>
   </div>
+
+  <div id="notif"></div>
 
   <nav>
     <a id="nav_offers" href="#offers">Offers</a>
+    <a id="nav_mine" href="#mybets">My bets</a>
     <a id="nav_ready" href="#ready">Ready to settle</a>
     <a id="nav_odds" href="#odds">Odds over time</a>
     <a id="nav_board" href="#leaderboard">Leaderboard</a>
+    <a id="nav_activity" href="#activity">Activity</a>
     <a id="nav_explainer" href="#explainer">Explainer</a>
   </nav>
 
@@ -70,6 +91,15 @@
     <button class="grey" onclick="$('makeOffer').scrollIntoView({behavior:'smooth'})">Make an offer ↓</button>
 
     <h2>Open offers</h2>
+    <div class="row">
+      <input id="search" placeholder="Search offers..." oninput="renderOffers()">
+      <select id="sortBy" onchange="renderOffers()">
+        <option value="new">Newest</option>
+        <option value="closing">Closing soon</option>
+        <option value="odds">Best odds</option>
+        <option value="popular">Most bets</option>
+      </select>
+    </div>
     <div id="open"></div>
 
     <div class="card" id="makeOffer">
@@ -92,6 +122,7 @@
       </div>
       <input id="topicOther" placeholder="Type your own topic" maxlength="40" hidden>
       <input id="subOther" placeholder="Type your own subtopic" maxlength="40" hidden>
+      <input id="forfeit" placeholder="Forfeit for the loser (optional, e.g. shouts coffee)" maxlength="80">
       <div class="small">Betting closes (optional)</div>
       <input id="closes" type="datetime-local">
       <div class="small">Nobody can bet after the closing time, and the bet can be settled once it has passed.</div>
@@ -99,10 +130,16 @@
     </div>
   </div>
 
+  <!-- PAGE: MY BETS -->
+  <div id="page_mine" hidden>
+    <h2>My bets</h2>
+    <div id="mineBody"></div>
+  </div>
+
   <!-- PAGE: READY TO SETTLE -->
   <div id="page_ready" hidden>
     <h2>Ready to settle</h2>
-    <div class="small">Bets appear here once betting has closed, or straight away if they have no closing time.</div>
+    <div class="small">Bets appear here once betting has closed, or straight away if they have no closing time. You need to type your name at the top before settling.</div>
     <div id="ready"></div>
   </div>
 
@@ -115,10 +152,27 @@
     </div>
   </div>
 
-  <!-- PAGE: LEADERBOARD AND HEAD TO HEAD -->
+  <!-- PAGE: LEADERBOARD -->
   <div id="page_board" hidden>
     <h2>Leaderboard</h2>
+    <select id="season" onchange="season=this.value;renderBoard()"></select>
     <div id="board" class="card"></div>
+    <details class="card"><summary>Badge guide and ranks</summary>
+      <ul>
+        <li>🎟️ <b>First Bet:</b> played your first settled bet</li>
+        <li>🔥 <b>Hot Streak:</b> won 3 in a row</li>
+        <li>🎯 <b>Called It:</b> won a bet against an offer at odds of 3 or more</li>
+        <li>💰 <b>Big Win:</b> won 100 or more on one bet</li>
+        <li>🏦 <b>Bookie:</b> made 5 or more offers</li>
+        <li>🦊 <b>Contrarian:</b> won 3 or more bets against offers</li>
+        <li>🔄 <b>Comeback:</b> climbed back into profit after being 20 or more behind</li>
+        <li>🧠 <b>Tipster:</b> right 60% of the time or better as an offerer, from 5 or more bets</li>
+      </ul>
+      <p class="small">Ranks by settled bets played: 🌱 Rookie (0 to 2), 🎲 Punter (3 to 9), ⭐ Sharp (10 to 24), 👑 Legend (25 or more).</p>
+    </details>
+
+    <h2>Hall of Fame</h2>
+    <div id="hof" class="card"></div>
 
     <h2>Head to head</h2>
     <div class="card">
@@ -133,6 +187,14 @@
     <div id="done"></div>
   </div>
 
+  <!-- PAGE: ACTIVITY -->
+  <div id="page_activity" hidden>
+    <h2>Moments</h2>
+    <div id="moments" class="card"></div>
+    <h2>Recent activity</h2>
+    <div id="feed" class="card"></div>
+  </div>
+
   <!-- PAGE: EXPLAINER -->
   <div id="page_explainer" hidden>
     <h2>How Want to Bet works</h2>
@@ -145,33 +207,36 @@
     <div class="card">
       <h3>The pages</h3>
       <ul>
-        <li><b>Offers:</b> the open offers you can bet on, and the form to make your own offer at the bottom.</li>
+        <li><b>Offers:</b> search, sort and bet on open offers, and make your own offer at the bottom.</li>
+        <li><b>My bets:</b> your open offers, bets you've placed, your results, stats and badges.</li>
         <li><b>Ready to settle:</b> bets where betting has closed and the result needs to be declared. The number in brackets shows how many are waiting.</li>
-        <li><b>Odds over time:</b> pick a bet to see a chart and table of every offer made on it, oldest to newest.</li>
-        <li><b>Leaderboard:</b> everyone's net winnings, a head-to-head comparison of any two people, and the list of settled bets.</li>
+        <li><b>Odds over time:</b> pick a bet to see every offer made on it, plus its comments.</li>
+        <li><b>Leaderboard:</b> rankings, monthly seasons, the Hall of Fame, head to head, and settled bets.</li>
+        <li><b>Activity:</b> the latest happenings, Bet of the week, Biggest upset and more.</li>
       </ul>
       <p>The <b>Filter by topic</b> box under the menu narrows every page except this one to a single topic, and then to a subtopic.</p>
     </div>
 
     <div class="card">
       <h3>1. Pick a group</h3>
-      <p>Everything on the site lives inside a group, and each group has its own bets and leaderboard.</p>
+      <p>Everything lives inside a group, and each group has its own bets, topics and leaderboard.</p>
       <ul>
-        <li><b>Everyone (public)</b> is the default group. Anyone can see it, and it's where you land if you don't join another group.</li>
-        <li><b>Create a group</b> under <i>Create or join a group</i> to get a private space. You'll get an invite link to share.</li>
-        <li><b>Join a group</b> by opening an invite link, or by pasting a link or code into the Join box. Your groups appear in the dropdown.</li>
+        <li><b>Everyone (public)</b> is the default group. Anyone can see it.</li>
+        <li><b>Create a group</b> under <i>Create or join a group</i> to get a private space with an invite link to share. The device that creates a group becomes its <b>admin</b>, with tools to delete a bet, rename a topic and release a claimed name.</li>
+        <li><b>Join a group</b> by opening an invite link, or pasting a link or code into the Join box.</li>
       </ul>
       <p>The invite link is the only protection, so only share it with people you want in the group.</p>
     </div>
 
     <div class="card">
-      <h3>2. Type your name</h3>
-      <p>At the top of the page, type your name in the <b>Your name</b> box. This is the name shown on your offers and bets, and your browser remembers it for next time.</p>
+      <h3>2. Your name and PIN</h3>
+      <p>Type your name at the top of the page. This is the name shown on your offers and bets, and your browser remembers it.</p>
+      <p>Names can be <b>claimed with a PIN</b> so nobody else can use them. If a name is claimed, you'll need its PIN once on each device. Remember your PIN, because it can't be recovered, only released by a group admin.</p>
     </div>
 
     <div class="card">
       <h3>3. Make an offer</h3>
-      <p>The form is at the bottom of the Offers page (or tap <b>Make an offer</b> at the top to jump to it). Choose what kind of bet it is:</p>
+      <p>The form is at the bottom of the Offers page. Choose what kind of bet it is:</p>
       <ul>
         <li><b>A statement</b>, for example <i>"It will rain in Sydney on Saturday"</i>. You back it, and others bet against you.</li>
         <li><b>A question</b>, for example <i>"Who will win the Melbourne Cup?"</i>. You give your own answer, other people add theirs, and everyone else bets against the answers they think are wrong.</li>
@@ -180,8 +245,9 @@
       <ul>
         <li><b>Odds:</b> how much you'll pay out for every 1 someone bets against you.</li>
         <li><b>Most you'll pay out:</b> your total limit across everyone who bets.</li>
-        <li><b>Topic and subtopic:</b> pick from the list, such as Sport then NRL. If yours isn't there, choose <i>Other (type your own)</i> and it will appear in the list for everyone in the group.</li>
-        <li><b>Betting closes (optional):</b> after this time nobody can bet. Leave it blank for no closing time.</li>
+        <li><b>Topic and subtopic:</b> pick from the list, or choose <i>Other (type your own)</i>.</li>
+        <li><b>Forfeit (optional):</b> a fun extra for the loser, like shouting coffee.</li>
+        <li><b>Betting closes (optional):</b> after this time nobody can bet.</li>
       </ul>
       <div class="eg">
         <b>Example:</b> You offer odds of <b>2</b> with a most-you'll-pay-out of <b>100</b>.
@@ -194,39 +260,40 @@
 
     <div class="card">
       <h3>4. Bet against an offer</h3>
-      <p>Find an offer or answer you disagree with, type how much you want to bet (any amount up to what's left), and click <b>Bet</b>. Several people can each take a piece of the same offer until the limit is used up. You can't bet against your own offer, and you can't bet once betting has closed.</p>
+      <p>Find an offer or answer you disagree with, type how much you want to bet (any amount up to what's left), and click <b>Bet</b>. You can't bet against your own offer, and you can't bet once betting has closed.</p>
+      <p>Use <b>Comments</b> on any bet for a bit of trash talk, and <b>Share</b> to send a link straight to that bet.</p>
     </div>
 
     <div class="card">
       <h3>5. Offer your own odds or add an answer</h3>
-      <p>On a <b>statement</b>, click <b>Offer your own odds</b> to back the same statement at different odds. Your odds can be higher or lower than the others, and the person betting chooses whichever offer they like.</p>
-      <p>On a <b>question</b>, click <b>Add your answer</b> to back a different answer (or the same one at different odds). Each answer has its own odds and limit.</p>
-      <p>Everything added to a bet shares its topic and closing time.</p>
+      <p>On a <b>statement</b>, click <b>Offer your own odds</b> to back the same statement at different odds. On a <b>question</b>, click <b>Add your answer</b> to back a different answer. Each offer has its own limit.</p>
     </div>
 
     <div class="card">
       <h3>6. Say who won</h3>
-      <p>Once betting has closed (or straight away if there's no closing time), the bet appears on the <b>Ready to settle</b> page. <b>Anyone</b> in the group can settle it, and the result is final straight away.</p>
+      <p>Once betting has closed (or straight away if there's no closing time), the bet appears on <b>Ready to settle</b>. Anyone in the group can settle it, and the result records who settled it.</p>
       <ul>
-        <li><b>Statements:</b> click the name of the winner, such as <b>Alex won</b> or <b>John won</b>. Each bet is settled separately.</li>
-        <li><b>Questions:</b> click the correct answer, or <b>None of these</b>. Everyone who backed that answer wins from the people who bet against it, and everyone who backed a wrong answer pays out to the people who bet against theirs. All the bets on the question are settled together.</li>
+        <li><b>Statements:</b> click the name of the winner. Each bet is settled separately.</li>
+        <li><b>Questions:</b> click the correct answer, or <b>None of these</b>. All the bets on the question are settled together.</li>
       </ul>
-      <p>If nobody has bet on your offer yet, you can click <b>Cancel offer</b> instead.</p>
+      <p><b>Undo:</b> if a result is wrong, either person in the bet (from the device they used) or the group admin can click <b>Undo result</b> within 48 hours, and the bet goes back to Ready to settle.</p>
     </div>
 
     <div class="card">
-      <h3>The leaderboard and head to head</h3>
+      <h3>Stats, badges, seasons and updates</h3>
       <ul>
-        <li><b>Leaderboard:</b> everyone's net winnings across settled bets in the current group. It starts at 0, goes up when you win, and can go below 0 when you lose. There's no wallet or starting balance.</li>
-        <li><b>Head to head:</b> pick two people to see every bet between them, who won each one, and who is ahead overall.</li>
+        <li><b>Stats:</b> net winnings, record, win rate, streak, last-5 form, and how often you're right as an offerer.</li>
+        <li><b>Badges and ranks:</b> earned automatically. See the badge guide on the Leaderboard page.</li>
+        <li><b>Seasons:</b> pick a month on the Leaderboard to see that month only. The Hall of Fame lists each month's champion.</li>
+        <li><b>Updates:</b> a yellow box appears at the top when someone bets on your offer or a bet of yours is settled, and there's confetti when you win.</li>
       </ul>
     </div>
 
     <div class="card">
       <h3>Good to know</h3>
       <ul>
-        <li><b>It runs on honesty.</b> Anyone in the group can declare a winner and the result can't be changed afterwards, so only settle a bet when you're sure of the outcome.</li>
-        <li><b>Names aren't locked.</b> Anyone can type any name, so use names your group recognises.</li>
+        <li><b>It runs on honesty.</b> Claim your name and only settle a bet when you're sure of the outcome.</li>
+        <li><b>Your offers and bets are tied to your device.</b> If you clear your browser data or switch devices, you can't undo or cancel them from there, though your name and stats stay.</li>
         <li><b>It's all fake.</b> The numbers are just for bragging rights.</li>
       </ul>
     </div>
@@ -242,6 +309,7 @@ const store = {
   get(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
 };
+const rand = () => Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('');
 
 // Default topics and subtopics. Add or remove items here to change the list.
 const TOPICS = {
@@ -269,18 +337,31 @@ const TOPICS = {
 };
 
 let token = store.get('wtb_token', null);
-if (!token) {
-  token = Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('');
-  store.set('wtb_token', token);
-}
+if (!token) { token = rand(); store.set('wtb_token', token); }
 let mine = store.get('wtb_mine', []);            // offers made on this device
+let myTakes = store.get('wtb_mytakes', []);      // bets placed on this device
 let group = store.get('wtb_group', 'public');    // current group code
 let groups = store.get('wtb_groups', []);        // joined groups [{code, name}]
-let D = { group: null, bets: [], takes: [], byBet: {} };
-let selTopic = null, p1 = '', p2 = '', topicFilter = 'all', subFilter = 'all';
-let QA = {};                                     // question id -> list of distinct answers
+let admin = store.get('wtb_admin', {});          // group code -> admin token
+let pins = store.get('wtb_pins', {});            // 'code|name' -> PIN
+let seenAt = store.get('wtb_seen', {});          // group code -> ISO time
+let D = { group: null, bets: [], takes: [], comments: [], claimed: [], byBet: {} };
+let selTopic = null, p1 = '', p2 = '', topicFilter = 'all', subFilter = 'all', season = 'all';
+let QA = {}, focusBet = null, shownWins = 0;
 
+/* ---------- helpers ---------- */
+const nameKey = s => String(s || '').trim().toLowerCase();
+const me = () => nameKey($('name').value);
+const getPin = () => pins[group + '|' + me()] || '';
+const isAdmin = () => !!admin[group];
 const fmt = d => new Date(d).toLocaleString([], { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+const ago = d => {
+  const s = Math.max(0, (Date.now() - new Date(d)) / 1000);
+  if (s < 60) return 'just now';
+  if (s < 3600) return Math.floor(s / 60) + 'm ago';
+  if (s < 86400) return Math.floor(s / 3600) + 'h ago';
+  return Math.floor(s / 86400) + 'd ago';
+};
 const isClosed = x => !!x.closes_at && new Date(x.closes_at) <= new Date();
 const leftOf = x => x.max_payout - (D.byBet[x.id] || []).reduce((s, k) => s + k.payout, 0);
 const active = x => x.status === 'open' && ((!isClosed(x) && leftOf(x) > 0) || (D.byBet[x.id] || []).some(k => !k.winner));
@@ -291,22 +372,103 @@ const threadsOf = bets => {
   bets.forEach(x => { const t = x.topic_id || x.id; if (!m.has(t)) m.set(t, []); m.get(t).push(x); });
   return m;
 };
-
 const has = (list, v) => list.some(x => x.toLowerCase() === String(v).toLowerCase());
 const canon = (list, v) => list.find(x => x.toLowerCase() === v.toLowerCase()) || v;
 const subsOf = t => Object.prototype.hasOwnProperty.call(TOPICS, t) ? TOPICS[t] : [];
 const topicNames = () => [...Object.keys(TOPICS), ...new Set(D.bets.map(b => b.category).filter(c => c && !has(Object.keys(TOPICS), c)))];
 const allSubs = t => [...subsOf(t), ...new Set(D.bets.filter(b => b.category === t && b.subcategory && !has(subsOf(t), b.subcategory)).map(b => b.subcategory))];
-
 const inFilter = x => {
   if (topicFilter === 'all') return true;
   if (topicFilter === 'general') return !x.category;
   if ((x.category || '').toLowerCase() !== topicFilter.toLowerCase()) return false;
   return subFilter === 'all' || (x.subcategory || '').toLowerCase() === subFilter.toLowerCase();
 };
+const settleMs = k => +new Date(k.settled_at || k.created_at);
+const monthKey = ms => { const d = new Date(ms); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); };
+const monthLabel = key => { const [y, m] = key.split('-'); return new Date(+y, +m - 1, 1).toLocaleString([], { month: 'long', year: 'numeric' }); };
+const fmtNet = v => (v > 0 ? '+' : '') + v;
+const pct = (a, b) => b ? Math.round(100 * a / b) + '%' : '-';
+const streakTxt = s => !s.cur ? '-' : s.cur > 0 ? 'W' + s.cur : 'L' + (-s.cur);
+const formHtml = s => s.form.slice(-5).map(r => `<span class="${r === 'W' ? 'w' : 'l'}">${r}</span>`).join(' ') || '-';
+const asMe = x => mine.includes(x.id) || (me() && nameKey(x.creator) === me());
+const asBettor = k => myTakes.includes(k.id) || (me() && nameKey(k.taker) === me());
+const canUndo = (k, x) => isAdmin() || ((mine.includes(x.id) || myTakes.includes(k.id)) && (!k.settled_at || Date.now() - new Date(k.settled_at) < 48 * 3600e3));
 
-$('name').value = store.get('wtb_name', '');
-$('name').onchange = () => store.set('wtb_name', $('name').value.trim());
+function copyText(txt, msg) {
+  if (navigator.clipboard) navigator.clipboard.writeText(txt).then(() => alert(msg), () => prompt('Copy this link:', txt));
+  else prompt('Copy this link:', txt);
+}
+
+function confetti() {
+  const em = ['🎉', '🎊', '✨', '🏆', '💰'];
+  for (let i = 0; i < 40; i++) {
+    const s = document.createElement('span');
+    s.className = 'conf'; s.textContent = em[i % em.length];
+    s.style.left = Math.random() * 100 + 'vw';
+    s.style.animationDelay = Math.random() * 0.8 + 's';
+    document.body.appendChild(s);
+    setTimeout(() => s.remove(), 4200);
+  }
+}
+
+function fail(error) {
+  alert(error.message);
+  if (/PIN/.test(error.message)) {
+    delete pins[group + '|' + me()]; store.set('wtb_pins', pins); renderName();
+  }
+}
+
+/* ---------- stats, badges, ranks ---------- */
+const BADGES = [
+  ['🎟️', 'First Bet', 'Played your first settled bet', s => s.w + s.l >= 1],
+  ['🔥', 'Hot Streak', 'Won 3 in a row', s => s.best >= 3],
+  ['🎯', 'Called It', 'Won a bet against an offer at odds of 3 or more', s => s.longWins >= 1],
+  ['💰', 'Big Win', 'Won 100 or more on one bet', s => s.bigWin >= 100],
+  ['🏦', 'Bookie', 'Made 5 or more offers', s => s.offers >= 5],
+  ['🦊', 'Contrarian', 'Won 3 or more bets against offers', s => s.betW >= 3],
+  ['🔄', 'Comeback', 'Climbed back into profit after being 20 or more behind', s => s.comeback],
+  ['🧠', 'Tipster', 'Right 60% of the time or better as an offerer, from 5 or more bets', s => s.offP >= 5 && s.offW / s.offP >= 0.6]
+];
+const rankOf = s => { const n = s.w + s.l; return n >= 25 ? '👑 Legend' : n >= 10 ? '⭐ Sharp' : n >= 3 ? '🎲 Punter' : '🌱 Rookie'; };
+const badgesOf = s => BADGES.filter(b => b[3](s));
+const badgeIcons = s => badgesOf(s).map(b => `<span class="badge" title="${esc(b[1] + ': ' + b[2])}">${b[0]}</span>`).join('') || '-';
+const statBlock = s => `<div><b>${rankOf(s)}</b></div>
+  <div>Net <b>${fmtNet(s.net)}</b> · Record <b>${s.w}-${s.l}</b> · Win rate <b>${pct(s.w, s.w + s.l)}</b> · Streak <b>${streakTxt(s)}</b></div>
+  <div>Form: ${formHtml(s)}</div>
+  <div class="small">As an offerer: ${s.offP ? pct(s.offW, s.offP) + ' (' + s.offW + ' of ' + s.offP + ')' : 'no results yet'} · As a better: ${s.betP ? pct(s.betW, s.betP) + ' (' + s.betW + ' of ' + s.betP + ')' : 'no results yet'}</div>
+  <div style="margin-top:6px">${badgesOf(s).map(b => `<span class="tag" title="${esc(b[2])}">${b[0]} ${esc(b[1])}</span>`).join('') || '<span class="small">No badges yet</span>'}</div>`;
+
+function computeStats(bets, takes) {
+  const byId = Object.fromEntries(bets.map(x => [x.id, x]));
+  const S = {}, offerCount = {};
+  const get = n => { const k = nameKey(n); return S[k] || (S[k] = { name: n, net: 0, w: 0, l: 0, form: [], cur: 0, best: 0, bigWin: 0, offW: 0, offP: 0, betW: 0, betP: 0, longWins: 0, minNet: 0, comeback: false, offers: 0 }); };
+  bets.forEach(x => { if (x.status !== 'cancelled') { const k = nameKey(x.creator); offerCount[k] = (offerCount[k] || 0) + 1; } });
+  const ev = takes.filter(k => k.winner).map(k => {
+    const x = byId[k.bet_id]; if (!x) return null;
+    const cw = k.winner === 'creator';
+    return { k, x, t: settleMs(k), cw, amt: cw ? k.stake : k.payout };
+  }).filter(Boolean).sort((a, b) => a.t - b.t || a.k.id - b.k.id);
+  ev.forEach(e => {
+    [[e.x.creator, e.cw, 'off'], [e.k.taker, !e.cw, 'bet']].forEach(([name, won, role]) => {
+      const s = get(name);
+      s.net += won ? e.amt : -e.amt;
+      if (won) s.w++; else s.l++;
+      s.form.push(won ? 'W' : 'L');
+      s.cur = won ? (s.cur > 0 ? s.cur + 1 : 1) : (s.cur < 0 ? s.cur - 1 : -1);
+      if (s.cur > s.best) s.best = s.cur;
+      if (won && e.amt > s.bigWin) s.bigWin = e.amt;
+      if (role === 'off') { s.offP++; if (won) s.offW++; }
+      else { s.betP++; if (won) { s.betW++; if (Number(e.x.odds) >= 3) s.longWins++; } }
+      if (s.net < s.minNet) s.minNet = s.net;
+      if (s.minNet <= -20 && s.net > 0) s.comeback = true;
+    });
+  });
+  Object.keys(S).forEach(k => { S[k].offers = offerCount[k] || 0; });
+  return { S, ev };
+}
+
+/* ---------- name and PIN ---------- */
+function nameInput() { store.set('wtb_name', $('name').value.trim()); renderName(); }
 
 function myName() {
   const n = $('name').value.trim();
@@ -315,9 +477,39 @@ function myName() {
   return n;
 }
 
+function renderName() {
+  const n = $('name').value.trim(), key = nameKey(n);
+  if (!n) { $('nameInfo').textContent = ''; $('pinRow').hidden = true; return; }
+  const claimed = (D.claimed || []).includes(key), hasPin = !!pins[group + '|' + key];
+  if (claimed) {
+    $('nameInfo').textContent = hasPin ? '🔒 This name is claimed, and your PIN is saved on this device.' : '🔒 This name is claimed. Enter its PIN to use it.';
+    $('pinRow').hidden = hasPin;
+    $('pinBtn').textContent = 'Use PIN';
+  } else {
+    $('nameInfo').textContent = 'Nobody has claimed this name, so anyone could use it. Claim it with a PIN to protect it.';
+    $('pinRow').hidden = false;
+    $('pinBtn').textContent = 'Claim name';
+  }
+}
+
+async function pinAction() {
+  const n = $('name').value.trim(), pin = $('pin').value;
+  if (!n) return alert('Type your name first');
+  if (!pin) return alert('Type a PIN');
+  const key = group + '|' + nameKey(n);
+  if ((D.claimed || []).includes(nameKey(n))) {
+    pins[key] = pin; store.set('wtb_pins', pins); $('pin').value = ''; renderName(); return;
+  }
+  const { error } = await sb.rpc('claim_name', { p_code: group, p_name: n, p_pin: pin });
+  if (error) return alert(error.message);
+  pins[key] = pin; store.set('wtb_pins', pins); $('pin').value = '';
+  alert('Name claimed. Remember your PIN, because you will need it on other devices.');
+  load();
+}
+
 /* ---------- pages ---------- */
-const PAGES = ['offers', 'ready', 'odds', 'board', 'explainer'];
-const HASH = { offers: 'offers', ready: 'ready', odds: 'odds', leaderboard: 'board', explainer: 'explainer', home: 'offers', details: 'odds' };
+const PAGES = ['offers', 'mine', 'ready', 'odds', 'board', 'activity', 'explainer'];
+const HASH = { offers: 'offers', mybets: 'mine', ready: 'ready', odds: 'odds', leaderboard: 'board', activity: 'activity', explainer: 'explainer', home: 'offers', details: 'odds' };
 
 function route() {
   const h = location.hash.slice(1);
@@ -327,19 +519,27 @@ function route() {
     $('nav_' + p).className = p === page ? 'on' : '';
   });
   $('filterBar').hidden = page === 'explainer';
+  if (page === 'mine') renderMine();
   if (page === 'odds') renderOdds();
   if (page === 'board') renderBoard();
+  if (page === 'activity') renderActivity();
 }
 window.onhashchange = route;
 
 function openOdds(t) { selTopic = t; location.hash = '#odds'; }
 
 function renderAll() {
+  renderName();
   renderFilters();
+  renderAdmin();
+  renderNotifs();
   renderOffers();
   renderReady();
-  if (!$('page_odds').hidden) renderOdds();
-  if (!$('page_board').hidden) renderBoard();
+  const vis = p => !$('page_' + p).hidden;
+  if (vis('mine')) renderMine();
+  if (vis('odds')) renderOdds();
+  if (vis('board')) renderBoard();
+  if (vis('activity')) renderActivity();
 }
 
 function kindChanged() {
@@ -358,19 +558,13 @@ function renderGroupBar() {
   $('groupSel').value = group;
   $('groupInfo').innerHTML = group === 'public'
     ? 'This is the public group, so everyone can see these bets. Create a group for a private space.'
-    : `Invite people with this link: <b>${esc(groupLink())}</b> <button class="grey" onclick="copyLink()">Copy link</button>`;
-}
-
-function copyLink() {
-  const link = groupLink();
-  if (navigator.clipboard) navigator.clipboard.writeText(link).then(() => alert('Link copied'), () => prompt('Copy this link:', link));
-  else prompt('Copy this link:', link);
+    : `Invite people with this link: <b>${esc(groupLink())}</b> <button class="grey" onclick="copyText(groupLink(), 'Link copied')">Copy link</button>`;
 }
 
 function switchGroup(code) {
   group = code; store.set('wtb_group', code);
-  D = { group: null, bets: [], takes: [], byBet: {} };
-  selTopic = null; p1 = ''; p2 = ''; topicFilter = 'all'; subFilter = 'all';
+  D = { group: null, bets: [], takes: [], comments: [], claimed: [], byBet: {} };
+  selTopic = null; p1 = ''; p2 = ''; topicFilter = 'all'; subFilter = 'all'; season = 'all'; shownWins = 0;
   renderGroupBar(); renderAll(); load();
 }
 
@@ -387,9 +581,11 @@ async function joinByCode(code) {
 async function createGroup() {
   const name = $('newGroup').value.trim();
   if (!name) return alert('Type a name for your group');
-  const { data, error } = await sb.rpc('create_group', { p_name: name });
+  const at = rand();
+  const { data, error } = await sb.rpc('create_group', { p_name: name, p_token: at });
   if (error) return alert(error.message);
   groups.push({ code: data, name }); store.set('wtb_groups', groups);
+  admin[data] = at; store.set('wtb_admin', admin);
   $('newGroup').value = ''; $('groupDet').open = false;
   switchGroup(data);
 }
@@ -399,6 +595,38 @@ async function joinGroup() {
   if (!raw) return alert('Paste a group link or code');
   const m = raw.match(/[?&]g=([A-Za-z0-9]+)/);
   if (await joinByCode(m ? m[1] : raw)) { $('joinCode').value = ''; $('groupDet').open = false; }
+}
+
+function renderAdmin() {
+  $('adminDet').hidden = !isAdmin();
+  if (!isAdmin()) return;
+  const cats = [...new Set(D.bets.map(b => b.category).filter(Boolean))].sort();
+  const v = $('renOld').value;
+  $('renOld').innerHTML = cats.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
+  $('renOld').value = v;
+}
+
+async function adminRename() {
+  const o = $('renOld').value, n = $('renNew').value.trim();
+  if (!o || !n) return alert('Pick a topic and type its new name');
+  const { error } = await sb.rpc('admin_rename_topic', { p_code: group, p_old: o, p_new: n, p_token: admin[group] });
+  if (error) return alert(error.message);
+  $('renNew').value = ''; $('adminDet').open = false; load();
+}
+
+async function adminRelease() {
+  const n = $('relName').value.trim();
+  if (!n) return alert('Type the name to release');
+  const { error } = await sb.rpc('admin_release_name', { p_code: group, p_name: n, p_token: admin[group] });
+  if (error) return alert(error.message);
+  $('relName').value = ''; $('adminDet').open = false; alert('Name released.'); load();
+}
+
+async function adminDelete(t) {
+  if (!confirm('Delete this bet and all its offers, bets and comments? This cannot be undone.')) return;
+  const { error } = await sb.rpc('admin_delete_bet', { p_code: group, p_bet: t, p_token: admin[group] });
+  if (error) return alert(error.message);
+  load();
 }
 
 /* ---------- actions ---------- */
@@ -423,13 +651,14 @@ async function makeOffer() {
     closes = d.toISOString();
   }
   const { data, error } = await sb.rpc('create_offer', {
-    p_code: group, p_name: name, p_statement: $('stmt').value, p_odds: odds, p_max: max,
-    p_token: token, p_cat: cat || null, p_sub: sub || null, p_answer: isQ ? answer : null, p_closes: closes
+    p_code: group, p_name: name, p_statement: $('stmt').value, p_odds: odds, p_max: max, p_token: token,
+    p_cat: cat || null, p_sub: sub || null, p_answer: isQ ? answer : null,
+    p_forfeit: $('forfeit').value.trim() || null, p_pin: getPin(), p_closes: closes
   });
-  if (error) return alert(error.message);
+  if (error) return fail(error);
   mine.push(data); store.set('wtb_mine', mine);
-  $('stmt').value = ''; $('ans').value = ''; $('odds').value = ''; $('max').value = ''; $('closes').value = '';
-  $('topicOther').value = ''; $('subOther').value = ''; $('offerTopic').value = ''; fillSubs('');
+  ['stmt', 'ans', 'odds', 'max', 'closes', 'forfeit', 'topicOther', 'subOther'].forEach(id => { $(id).value = ''; });
+  $('offerTopic').value = ''; fillSubs('');
   await load();
   alert('Your offer is posted. You can see it under Open offers.');
   window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -444,9 +673,10 @@ async function counter(t) {
   if (isQ && !answer) return alert('Type your answer');
   if (!(odds > 0) || !(max > 0)) return alert('Enter your odds and the most you will pay out');
   const { data, error } = await sb.rpc('counter_offer', {
-    p_code: group, p_topic: t, p_name: name, p_odds: odds, p_max: max, p_token: token, p_answer: isQ ? answer : null
+    p_code: group, p_topic: t, p_name: name, p_odds: odds, p_max: max, p_token: token,
+    p_answer: isQ ? answer : null, p_pin: getPin()
   });
-  if (error) return alert(error.message);
+  if (error) return fail(error);
   mine.push(data); store.set('wtb_mine', mine);
   load();
 }
@@ -455,31 +685,65 @@ async function take(id) {
   const name = myName(); if (!name) return;
   const stake = parseInt($('s' + id).value);
   if (!(stake > 0)) return alert('Enter how much you want to bet');
-  const { error } = await sb.rpc('take_offer', { p_code: group, p_id: id, p_name: name, p_stake: stake, p_token: token });
-  if (error) alert(error.message);
+  const { data, error } = await sb.rpc('take_offer', { p_code: group, p_id: id, p_name: name, p_stake: stake, p_token: token, p_pin: getPin() });
+  if (error) return fail(error);
+  myTakes.push(data); store.set('wtb_mytakes', myTakes);
+  load();
+}
+
+async function comment(t, pre) {
+  const name = myName(); if (!name) return;
+  const body = $(pre + t).value.trim();
+  if (!body) return alert('Write a comment first');
+  const { error } = await sb.rpc('add_comment', { p_code: group, p_topic: t, p_name: name, p_body: body, p_pin: getPin() });
+  if (error) return fail(error);
   load();
 }
 
 async function settle(id, winner) {
-  const { error } = await sb.rpc('settle_take', { p_code: group, p_take: id, p_winner: winner });
-  if (error) alert(error.message);
+  const name = myName(); if (!name) return;
+  const { error } = await sb.rpc('settle_take', { p_code: group, p_take: id, p_winner: winner, p_name: name, p_pin: getPin() });
+  if (error) return fail(error);
   load();
 }
 
 async function settleQ(t, i) {
+  const name = myName(); if (!name) return;
   const a = i >= 0 ? (QA[t] || [])[i] : null;
-  const { error } = await sb.rpc('settle_question', { p_code: group, p_topic: t, p_answer: a ?? null });
-  if (error) alert(error.message);
+  const { error } = await sb.rpc('settle_question', { p_code: group, p_topic: t, p_answer: a ?? null, p_name: name, p_pin: getPin() });
+  if (error) return fail(error);
+  load();
+}
+
+async function undo(id) {
+  if (!confirm('Undo this result? The bet goes back to Ready to settle.')) return;
+  const { error } = await sb.rpc('undo_result', { p_code: group, p_take: id, p_token: admin[group] || token });
+  if (error) return alert(error.message);
   load();
 }
 
 async function owner(fn, id) {
   const { error } = await sb.rpc(fn, { p_id: id, p_token: token });
-  if (error) alert(error.message);
+  if (error) return alert(error.message);
   load();
 }
 
+function shareBet(t) { copyText(location.origin + location.pathname + '?g=' + group + '&bet=' + t, 'Link to this bet copied'); }
+
+function markSeen() {
+  seenAt[group] = new Date().toISOString(); store.set('wtb_seen', seenAt);
+  shownWins = 0; renderNotifs();
+}
+
 /* ---------- loading ---------- */
+function applyFocus() {
+  if (!focusBet || !D.group) return;
+  const t = focusBet; focusBet = null;
+  const el = $('thread_' + t);
+  if (el && !$('page_offers').hidden) { el.scrollIntoView({ behavior: 'smooth' }); el.style.outline = '3px solid #2563eb'; }
+  else openOdds(t);
+}
+
 async function load() {
   const code = group;
   const { data, error } = await sb.rpc('load_group', { p_code: code });
@@ -494,11 +758,12 @@ async function load() {
   }
   const byBet = {};
   data.takes.forEach(k => (byBet[k.bet_id] = byBet[k.bet_id] || []).push(k));
-  D = { group: data.group, bets: data.bets, takes: data.takes, byBet };
+  D = { group: data.group, bets: data.bets, takes: data.takes, comments: data.comments || [], claimed: data.claimed || [], byBet };
   renderAll();
+  applyFocus();
 }
 
-/* ---------- topics ---------- */
+/* ---------- topics and filters ---------- */
 function fillSubs(keep) {
   const t = $('offerTopic').value;
   $('topicOther').hidden = t !== '__other';
@@ -513,8 +778,7 @@ function fillSubs(keep) {
 }
 
 function renderOfferTopics() {
-  const t0 = $('offerTopic').value;
-  const s0 = $('offerSub').value;
+  const t0 = $('offerTopic').value, s0 = $('offerSub').value;
   $('offerTopic').innerHTML = '<option value="">General</option>' +
     topicNames().map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('') +
     '<option value="__other">Other (type your own)…</option>';
@@ -541,10 +805,48 @@ function renderFilters() {
   if ($('subFilter').selectedIndex < 0) { subFilter = 'all'; $('subFilter').value = 'all'; }
 }
 
+/* ---------- notifications ---------- */
+function renderNotifs() {
+  if (!seenAt[group]) { seenAt[group] = new Date().toISOString(); store.set('wtb_seen', seenAt); }
+  const cut = +new Date(seenAt[group]), n = me();
+  const byId = Object.fromEntries(D.bets.map(x => [x.id, x]));
+  const items = []; let wins = 0, ready = 0;
+  D.takes.forEach(k => {
+    const x = byId[k.bet_id]; if (!x) return;
+    const off = mine.includes(x.id) || (n && nameKey(x.creator) === n);
+    const bet = myTakes.includes(k.id) || (n && nameKey(k.taker) === n);
+    if (!off && !bet) return;
+    const label = esc(x.statement) + (x.answer ? ' (' + esc(x.answer) + ')' : '');
+    if (off && !bet && +new Date(k.created_at) > cut) items.push(`🎲 ${esc(k.taker)} bet ${k.stake} on ${label}`);
+    if (k.winner && k.settled_at && +new Date(k.settled_at) > cut) {
+      const won = off ? k.winner === 'creator' : k.winner === 'taker';
+      const amt = k.winner === 'creator' ? k.stake : k.payout;
+      if (won) wins++;
+      items.push(`${won ? '🎉 You won' : '😬 You lost'} ${amt} on ${label}`);
+    }
+    if (!k.winner && (!x.closes_at || isClosed(x))) ready++;
+  });
+  if (ready) items.push(`⏰ ${ready} of your bets ${ready === 1 ? 'is' : 'are'} <a href="#ready">ready to settle</a>`);
+  $('notif').innerHTML = items.length
+    ? `<div class="card notif"><b>🔔 Updates for you</b><ul>${items.slice(0, 8).map(i => `<li>${i}</li>`).join('')}</ul><button class="grey" onclick="markSeen()">Mark as seen</button></div>` : '';
+  if (wins > shownWins) confetti();
+  shownWins = wins;
+}
+
+/* ---------- comments ---------- */
+const commentsHtml = (t, pre) => {
+  const cs = D.comments.filter(c => c.bet_id === t);
+  return `<details><summary>Comments (${cs.length})</summary>
+    ${cs.map(c => `<div class="small"><b>${esc(c.name)}</b>: ${esc(c.body)} · ${ago(c.created_at)}</div>`).join('')}
+    <div class="row"><input id="${pre}${t}" placeholder="Say something..." maxlength="300"><button onclick="comment(${t},'${pre}')">Post</button></div>
+  </details>`;
+};
+
 /* ---------- page: offers ---------- */
 function renderOffers() {
   const { bets, byBet } = D;
   renderOfferTopics();
+  const q = $('search').value.trim().toLowerCase();
 
   const row = x => {
     const ts = byBet[x.id] || [], left = leftOf(x), maxStake = Math.floor(left / x.odds + 1e-9);
@@ -561,15 +863,29 @@ function renderOffers() {
     return h + '</div>';
   };
 
-  let open = '';
+  const list = [];
   threadsOf(bets).forEach((offers, t) => {
     const live = offers.filter(active);
     const first = offers.find(o => o.id === t) || offers[offers.length - 1];
     if (!live.length || !inFilter(first)) return;
+    if (q) {
+      const hay = [first.statement, first.category, first.subcategory, first.forfeit, ...offers.map(o => o.creator + ' ' + (o.answer || ''))].join(' ').toLowerCase();
+      if (!hay.includes(q)) return;
+    }
+    list.push({ t, offers, live, first });
+  });
+  const bestOf = o => Math.max(0, ...o.live.map(x => Number(x.odds)));
+  const takesOf = o => o.offers.reduce((s, x) => s + (byBet[x.id] || []).length, 0);
+  const closeMs = o => o.first.closes_at ? +new Date(o.first.closes_at) : 9e15;
+  const sorters = { new: (a, b) => b.t - a.t, closing: (a, b) => closeMs(a) - closeMs(b), odds: (a, b) => bestOf(b) - bestOf(a), popular: (a, b) => takesOf(b) - takesOf(a) };
+  list.sort(sorters[$('sortBy').value] || sorters.new);
+
+  $('open').innerHTML = list.map(({ t, live, first }) => {
     const isQ = !!first.answer;
     const best = Math.max(0, ...live.filter(o => !isClosed(o) && leftOf(o) > 0).map(o => Number(o.odds)));
-    open += `<div class="card"><b>${esc(first.statement)}</b><span class="tag">${tagOf(first)}</span>${isQ ? '<span class="tag">Question</span>' : ''}
+    return `<div class="card" id="thread_${t}"><b>${esc(first.statement)}</b><span class="tag">${tagOf(first)}</span>${isQ ? '<span class="tag">Question</span>' : ''}
       ${first.closes_at ? `<div class="small">${isClosed(first) ? 'Betting closed' : 'Betting closes'} ${fmt(first.closes_at)}</div>` : ''}
+      ${first.forfeit ? `<div class="small">🎁 Forfeit: ${esc(first.forfeit)}</div>` : ''}
       ${live.sort((a, c) => c.odds - a.odds).map(row).join('')}
       ${isClosed(first) ? '' : `<details><summary>${isQ ? 'Add your answer' : 'Offer your own odds'}</summary>
         ${isQ ? `<input id="ca${t}" placeholder="Your answer" maxlength="100">` : ''}
@@ -579,10 +895,50 @@ function renderOffers() {
         </div>
         <button onclick="counter(${t})">Post offer</button>
       </details>`}
-      <button class="grey" onclick="openOdds(${t})">Odds history</button></div>`;
-  });
+      ${commentsHtml(t, 'cc')}
+      <div class="row" style="flex-wrap:wrap">
+        <button class="grey" onclick="openOdds(${t})">Odds history</button>
+        <button class="grey" onclick="shareBet(${t})">Share</button>
+        ${isAdmin() ? `<button class="grey" onclick="adminDelete(${t})">Delete (admin)</button>` : ''}
+      </div></div>`;
+  }).join('') || '<p class="small">No open offers match. Make one using the form at the bottom of this page.</p>';
+}
 
-  $('open').innerHTML = open || '<p class="small">No open offers here yet. Make the first one using the form at the bottom of this page.</p>';
+/* ---------- page: my bets ---------- */
+function renderMine() {
+  const n = me();
+  if (!n) { $('mineBody').innerHTML = '<div class="card"><p class="small">Type your name at the top of the page to see your bets.</p></div>'; return; }
+  const bets = D.bets.filter(inFilter), idset = new Set(bets.map(x => x.id));
+  const takes = D.takes.filter(k => idset.has(k.bet_id));
+  const byId = Object.fromEntries(bets.map(x => [x.id, x]));
+  const { S } = computeStats(bets, takes);
+  const s = S[n];
+
+  const offers = bets.filter(x => nameKey(x.creator) === n && active(x)).map(x =>
+    `<div class="offer"><b>${esc(x.statement)}</b>${x.answer ? ' · ' + esc(x.answer) : ''} · odds ${Number(x.odds)} · ${leftOf(x)} of ${x.max_payout} left
+      ${(D.byBet[x.id] || []).map(k => `<div class="small">• ${esc(k.taker)} bet ${k.stake}${k.winner ? ' (settled)' : ''}</div>`).join('')}</div>`).join('');
+
+  const placed = takes.filter(k => nameKey(k.taker) === n && !k.winner).map(k => {
+    const x = byId[k.bet_id];
+    return `<div class="offer"><b>${esc(x.statement)}</b>${x.answer ? ' · against ' + esc(x.answer) : ''} · you bet ${k.stake} against ${esc(x.creator)} to win ${k.payout}
+      <div class="small">${x.closes_at && !isClosed(x) ? 'Betting closes ' + fmt(x.closes_at) : 'Waiting for the result'}</div></div>`;
+  }).join('');
+
+  const results = takes.filter(k => k.winner).map(k => [k, byId[k.bet_id]])
+    .filter(([k, x]) => x && (nameKey(x.creator) === n || nameKey(k.taker) === n))
+    .sort((a, b) => settleMs(b[0]) - settleMs(a[0])).slice(0, 15).map(([k, x]) => {
+      const won = nameKey(x.creator) === n ? k.winner === 'creator' : k.winner === 'taker';
+      const amt = k.winner === 'creator' ? k.stake : k.payout;
+      const other = nameKey(x.creator) === n ? k.taker : x.creator;
+      return `<div class="offer">${won ? '✅ Won' : '❌ Lost'} ${amt} · ${esc(x.statement)}${x.answer ? ' (' + esc(x.answer) + ')' : ''} · vs ${esc(other)} · ${ago(k.settled_at || k.created_at)}
+        ${canUndo(k, x) ? `<button class="grey" onclick="undo(${k.id})">Undo</button>` : ''}</div>`;
+    }).join('');
+
+  $('mineBody').innerHTML = `
+    <div class="card"><h3>Your stats</h3>${s ? statBlock(s) : '<p class="small">No settled bets yet. Your stats and badges appear once a bet you are in has been settled.</p>'}</div>
+    <div class="card"><h3>Your open offers</h3>${offers || '<p class="small">None right now.</p>'}</div>
+    <div class="card"><h3>Bets you have placed</h3>${placed || '<p class="small">None waiting for a result.</p>'}</div>
+    <div class="card"><h3>Your recent results</h3>${results || '<p class="small">No results yet.</p>'}</div>`;
 }
 
 /* ---------- page: ready to settle ---------- */
@@ -591,12 +947,10 @@ function renderReady() {
   const byId = Object.fromEntries(bets.map(x => [x.id, x]));
   const isQThread = x => { const f = byId[x.topic_id || x.id]; return !!(f && f.answer); };
 
-  // statements: one bet at a time
   const stmtItems = takes.filter(k => !k.winner).sort((a, c) => c.id - a.id)
     .map(k => [k, byId[k.bet_id]])
     .filter(([k, x]) => x && !isQThread(x) && !(x.closes_at && !isClosed(x)));
 
-  // questions: pick the correct answer
   const qItems = [];
   threadsOf(bets).forEach((offers, t) => {
     const first = offers.find(o => o.id === t) || offers[offers.length - 1];
@@ -614,20 +968,22 @@ function renderReady() {
     offers.forEach(o => { if (o.answer && !has(answers, o.answer)) answers.push(o.answer); });
     QA[t] = answers;
     return `<div class="card"><b>${esc(first.statement)}</b><span class="tag">${tagOf(first)}</span><span class="tag">Question</span>
+      ${first.forfeit ? `<div class="small">🎁 Forfeit: ${esc(first.forfeit)}</div>` : ''}
       <div class="small">${pending.length} bet${pending.length === 1 ? '' : 's'} waiting. Which answer was correct?</div>
       <div class="row" style="flex-wrap:wrap">
-        ${answers.map((a, i) => `<button onclick="if(confirm('Declare this answer as correct? It cannot be changed.'))settleQ(${t},${i})">${esc(a)}</button>`).join('')}
-        <button class="grey" onclick="if(confirm('Declare that none of these answers were correct? It cannot be changed.'))settleQ(${t},-1)">None of these</button>
+        ${answers.map((a, i) => `<button onclick="if(confirm('Declare this answer as correct?'))settleQ(${t},${i})">${esc(a)}</button>`).join('')}
+        <button class="grey" onclick="if(confirm('Declare that none of these answers were correct?'))settleQ(${t},-1)">None of these</button>
       </div></div>`;
   }).join('');
 
   const stmtHtml = stmtItems.filter(([k, x]) => inFilter(x)).map(([k, x]) =>
     `<div class="card"><b>${esc(x.statement)}</b><span class="tag">${tagOf(x)}</span>
       <div class="small">${esc(x.creator)} offered ${Number(x.odds)} · ${esc(k.taker)} bet ${k.stake}${x.closes_at ? ' · closed ' + fmt(x.closes_at) : ''}</div>
+      ${x.forfeit ? `<div class="small">🎁 Forfeit: ${esc(x.forfeit)}</div>` : ''}
       <div class="small">If ${esc(x.creator)} wins, ${esc(k.taker)} pays ${k.stake}. If ${esc(k.taker)} wins, ${esc(x.creator)} pays ${k.payout}.</div>
       <div class="row">
-        <button onclick="if(confirm('Declare this result? It cannot be changed.'))settle(${k.id},'creator')">${esc(x.creator)} won</button>
-        <button onclick="if(confirm('Declare this result? It cannot be changed.'))settle(${k.id},'taker')">${esc(k.taker)} won</button>
+        <button onclick="if(confirm('Declare this result?'))settle(${k.id},'creator')">${esc(x.creator)} won</button>
+        <button onclick="if(confirm('Declare this result?'))settle(${k.id},'taker')">${esc(k.taker)} won</button>
       </div></div>`).join('');
 
   $('ready').innerHTML = (qHtml + stmtHtml) || '<p class="small">Nothing is ready to settle right now.</p>';
@@ -637,13 +993,11 @@ function renderReady() {
 function renderOdds() {
   const { bets } = D;
   const byId = Object.fromEntries(bets.map(x => [x.id, x]));
-
   const topics = threadsOf(bets);
   const ids = [...topics.keys()].filter(t => inFilter(byId[t] || topics.get(t)[0]));
   $('topicSel').innerHTML = ids.map(t =>
     `<option value="${t}">#${t} ${esc((byId[t] || topics.get(t)[0]).statement.slice(0, 60))}</option>`).join('');
   if (!ids.includes(selTopic)) selTopic = ids[0];
-
   if (!ids.length) { $('odds2').innerHTML = '<p class="small">No bets here yet.</p>'; return; }
 
   $('topicSel').value = selTopic;
@@ -664,36 +1018,50 @@ function renderOdds() {
   $('odds2').innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto"><polyline points="${line}" fill="none" stroke="#2563eb" stroke-width="2"/>${dots}</svg>
     <div class="small">Each dot is an offer on this bet, oldest on the left. Higher odds pay more.</div>
     <div class="scroll"><table><tr><th>Posted</th><th>By</th>${anyAns ? '<th>Answer</th>' : ''}<th>Odds</th><th>Max payout</th><th>Taken</th><th>Status</th></tr>
-    ${offers.map(o => `<tr><td>${new Date(o.created_at).toLocaleString()}</td><td>${esc(o.creator)}</td>${anyAns ? `<td>${esc(o.answer || '')}</td>` : ''}<td>${Number(o.odds)}</td><td>${o.max_payout}</td><td>${o.max_payout - leftOf(o)}</td><td>${status(o)}</td></tr>`).join('')}</table></div>`;
+    ${offers.map(o => `<tr><td>${new Date(o.created_at).toLocaleString()}</td><td>${esc(o.creator)}</td>${anyAns ? `<td>${esc(o.answer || '')}</td>` : ''}<td>${Number(o.odds)}</td><td>${o.max_payout}</td><td>${o.max_payout - leftOf(o)}</td><td>${status(o)}</td></tr>`).join('')}</table></div>
+    ${commentsHtml(selTopic, 'cx')}`;
 }
 
-/* ---------- page: leaderboard and head to head ---------- */
+/* ---------- page: leaderboard ---------- */
 function renderBoard() {
-  const bets = D.bets.filter(inFilter);
-  const ids = new Set(bets.map(x => x.id));
-  const takes = D.takes.filter(k => ids.has(k.bet_id));
+  const bets = D.bets.filter(inFilter), idset = new Set(bets.map(x => x.id));
+  const allTakes = D.takes.filter(k => idset.has(k.bet_id));
   const byId = Object.fromEntries(bets.map(x => [x.id, x]));
 
+  const months = [...new Set(allTakes.filter(k => k.winner).map(k => monthKey(settleMs(k))))].sort().reverse();
+  $('season').innerHTML = '<option value="all">All time</option>' + months.map(m => `<option value="${m}">${esc(monthLabel(m))}</option>`).join('');
+  if (season !== 'all' && !months.includes(season)) season = 'all';
+  $('season').value = season;
+  const takes = season === 'all' ? allTakes : allTakes.filter(k => k.winner && monthKey(settleMs(k)) === season);
+
   // Leaderboard
-  const net = {}, label = {};
-  const add = (n, v) => { const k = n.toLowerCase(); label[k] = label[k] || n; net[k] = (net[k] || 0) + v; };
-  takes.filter(k => k.winner).forEach(k => {
-    const x = byId[k.bet_id]; if (!x) return;
-    if (k.winner === 'creator') { add(x.creator, k.stake); add(k.taker, -k.stake); }
-    else { add(x.creator, -k.payout); add(k.taker, k.payout); }
-  });
-  $('board').innerHTML = Object.keys(net).sort((a, c) => net[c] - net[a])
-    .map(k => `<div>${esc(label[k])}: ${net[k] > 0 ? '+' : ''}${net[k]}</div>`).join('') || '<span class="small">No settled bets here yet.</span>';
+  const { S } = computeStats(bets, takes);
+  const keys = Object.keys(S).sort((a, b) => S[b].net - S[a].net || S[b].w - S[a].w);
+  $('board').innerHTML = keys.length
+    ? `<div class="scroll"><table><tr><th>#</th><th>Name</th><th>Net</th><th>W-L</th><th>Win %</th><th>Streak</th><th>Form</th><th>As offerer</th><th>Badges</th></tr>
+      ${keys.map((k, i) => { const s = S[k]; return `<tr><td>${i + 1}</td><td><b>${esc(s.name)}</b><div class="small">${rankOf(s)}</div></td><td>${fmtNet(s.net)}</td><td>${s.w}-${s.l}</td><td>${pct(s.w, s.w + s.l)}</td><td>${streakTxt(s)}</td><td>${formHtml(s)}</td><td>${pct(s.offW, s.offP)}</td><td>${badgeIcons(s)}</td></tr>`; }).join('')}</table></div>`
+    : '<span class="small">No settled bets here yet.</span>';
+
+  // Hall of fame
+  const cur = monthKey(Date.now());
+  const champ = m => {
+    const r = computeStats(bets, allTakes.filter(k => k.winner && monthKey(settleMs(k)) === m)).S;
+    const ks = Object.keys(r).sort((a, b) => r[b].net - r[a].net);
+    return ks.length ? r[ks[0]] : null;
+  };
+  const nowChamp = months.includes(cur) ? champ(cur) : null;
+  $('hof').innerHTML = (nowChamp ? `<div>📅 Leading this month: <b>${esc(nowChamp.name)}</b> (${fmtNet(nowChamp.net)})</div>` : '') +
+    months.filter(m => m < cur).map(m => { const c = champ(m); return c ? `<div>🏆 ${esc(monthLabel(m))}: <b>${esc(c.name)}</b> (${fmtNet(c.net)})</div>` : ''; }).join('') ||
+    '<span class="small">Champions will appear here as each month finishes.</span>';
 
   // Head to head
   const names = {};
-  bets.forEach(x => { const k = x.creator.toLowerCase(); names[k] = names[k] || x.creator; });
-  takes.forEach(x => { const k = x.taker.toLowerCase(); names[k] = names[k] || x.taker; });
-  const keys = Object.keys(names).sort();
-  const me = String(store.get('wtb_name', '') || '').toLowerCase();
-  if (!keys.includes(p1)) p1 = keys.includes(me) ? me : (keys[0] || '');
-  if (!keys.includes(p2) || p2 === p1) p2 = keys.find(n => n !== p1) || '';
-  const opts = keys.map(k => `<option value="${esc(k)}">${esc(names[k])}</option>`).join('');
+  bets.forEach(x => { const k = nameKey(x.creator); names[k] = names[k] || x.creator; });
+  takes.forEach(x => { const k = nameKey(x.taker); names[k] = names[k] || x.taker; });
+  const nkeys = Object.keys(names).sort();
+  if (!nkeys.includes(p1)) p1 = nkeys.includes(me()) ? me() : (nkeys[0] || '');
+  if (!nkeys.includes(p2) || p2 === p1) p2 = nkeys.find(n => n !== p1) || '';
+  const opts = nkeys.map(k => `<option value="${esc(k)}">${esc(names[k])}</option>`).join('');
   $('p1').innerHTML = opts; $('p2').innerHTML = opts;
   $('p1').value = p1; $('p2').value = p2;
 
@@ -701,10 +1069,10 @@ function renderBoard() {
     $('h2h').innerHTML = '<p class="small">Needs at least two people.</p>';
   } else {
     let tot = 0, w1 = 0, w2 = 0;
-    const rows = [];
+    const rows = [], res = [];
     takes.forEach(k => {
       const x = byId[k.bet_id]; if (!x) return;
-      const c = x.creator.toLowerCase(), t = k.taker.toLowerCase();
+      const c = nameKey(x.creator), t = nameKey(k.taker);
       if (!((c === p1 && t === p2) || (c === p2 && t === p1))) return;
       let result = 'Awaiting result';
       if (k.winner) {
@@ -712,18 +1080,28 @@ function renderBoard() {
         const v1 = c === p1 ? cNet : -cNet;
         tot += v1;
         if (v1 > 0) w1++; else w2++;
+        res.push({ t: settleMs(k), v1 });
         result = `${esc(who(x, k, k.winner))} won ${k.winner === 'creator' ? k.stake : k.payout}`;
       }
       rows.push(`<tr><td>${esc(x.statement)}${x.answer ? ' · ' + esc(x.answer) : ''}</td><td>${esc(x.creator)}</td><td>${Number(x.odds)}</td><td>${k.stake}</td><td>${result}</td></tr>`);
     });
+    res.sort((a, b) => a.t - b.t);
+    let run = 0, last = 0;
+    for (let i = res.length - 1; i >= 0; i--) {
+      const sgn = res[i].v1 > 0 ? 1 : -1;
+      if (!last) last = sgn;
+      if (sgn === last) run++; else break;
+    }
+    const lead = tot > 0 ? `${esc(names[p1])} leads ${esc(names[p2])} ${w1}–${w2}` : tot < 0 ? `${esc(names[p2])} leads ${esc(names[p1])} ${w2}–${w1}` : `All square, ${w1}–${w2}`;
+    const runTxt = run >= 2 ? ` · ${esc(last > 0 ? names[p1] : names[p2])} has won the last ${run}` : '';
     $('h2h').innerHTML = rows.length
-      ? `<p><b>${esc(names[p1])}</b> is <b>${tot > 0 ? '+' : ''}${tot}</b> against <b>${esc(names[p2])}</b> on settled bets (${esc(names[p1])} won ${w1}, ${esc(names[p2])} won ${w2}).</p>
+      ? `<p><b>${lead}</b>${runTxt}<br><span class="small">${esc(names[p1])} is ${fmtNet(tot)} against ${esc(names[p2])} on settled bets.</span></p>
          <div class="scroll"><table><tr><th>Bet</th><th>Offered by</th><th>Odds</th><th>Taker's bet</th><th>Result</th></tr>${rows.join('')}</table></div>`
       : '<p class="small">No bets between these two yet.</p>';
   }
 
   // Settled bets
-  const settled = takes.filter(k => k.winner).sort((a, c) => c.id - a.id).map(k => {
+  $('done').innerHTML = takes.filter(k => k.winner).sort((a, c) => settleMs(c) - settleMs(a)).map(k => {
     const x = byId[k.bet_id]; if (!x) return '';
     const w = who(x, k, k.winner), l = who(x, k, k.winner === 'creator' ? 'taker' : 'creator');
     const amt = k.winner === 'creator' ? k.stake : k.payout;
@@ -731,9 +1109,55 @@ function renderBoard() {
       <div class="small">${x.answer
         ? `${esc(x.creator)} backed ${esc(x.answer)} at ${Number(x.odds)} · ${esc(k.taker)} bet ${k.stake} against it`
         : `${esc(x.creator)} offered ${Number(x.odds)} · ${esc(k.taker)} bet ${k.stake}`}</div>
-      <div class="offer"><b>${esc(w)} won ${amt}</b> (${esc(l)} lost ${amt})</div></div>`;
-  }).join('');
-  $('done').innerHTML = settled || '<p class="small">Nothing settled yet.</p>';
+      ${x.forfeit ? `<div class="small">🎁 Forfeit: ${esc(x.forfeit)}</div>` : ''}
+      <div class="offer"><b>${esc(w)} won ${amt}</b> (${esc(l)} lost ${amt})</div>
+      <div class="small">${k.settled_by ? 'Settled by ' + esc(k.settled_by) + ' · ' : ''}${ago(k.settled_at || k.created_at)}</div>
+      ${canUndo(k, x) ? `<button class="grey" onclick="undo(${k.id})">Undo result</button>` : ''}</div>`;
+  }).join('') || '<p class="small">Nothing settled yet.</p>';
+}
+
+/* ---------- page: activity ---------- */
+function renderActivity() {
+  const bets = D.bets.filter(inFilter), idset = new Set(bets.map(x => x.id));
+  const takes = D.takes.filter(k => idset.has(k.bet_id));
+  const byId = Object.fromEntries(bets.map(x => [x.id, x]));
+  const { S } = computeStats(bets, takes);
+  const now = Date.now(), week = 7 * 864e5;
+  const m = [];
+
+  const perThread = {};
+  takes.forEach(k => {
+    if (now - +new Date(k.created_at) < week) { const x = byId[k.bet_id]; const t = x.topic_id || x.id; perThread[t] = (perThread[t] || 0) + 1; }
+  });
+  const topT = Object.keys(perThread).sort((a, b) => perThread[b] - perThread[a])[0];
+  if (topT) {
+    const f = byId[topT] || bets.find(b => String(b.topic_id || b.id) === topT);
+    if (f) m.push(`🔥 <b>Bet of the week:</b> ${esc(f.statement)} (${perThread[topT]} bet${perThread[topT] === 1 ? '' : 's'} this week)`);
+  }
+  const up = takes.filter(k => k.winner === 'taker').sort((a, b) => b.payout - a.payout)[0];
+  if (up) { const x = byId[up.bet_id]; m.push(`😱 <b>Biggest upset:</b> ${esc(up.taker)} beat ${esc(x.creator)} on ${esc(x.statement)} and won ${up.payout}`); }
+  const hot = Object.values(S).sort((a, b) => b.cur - a.cur)[0];
+  if (hot && hot.cur >= 2) m.push(`🔥 <b>Hottest streak:</b> ${esc(hot.name)} has won ${hot.cur} in a row`);
+  const top = Object.values(S).sort((a, b) => b.net - a.net)[0];
+  if (top && top.net > 0) m.push(`👑 <b>Leader:</b> ${esc(top.name)} (${fmtNet(top.net)})`);
+  $('moments').innerHTML = m.map(i => `<div style="margin:4px 0">${i}</div>`).join('') || '<span class="small">Moments will appear once there is some betting activity.</span>';
+
+  const feed = [];
+  bets.filter(x => x.status !== 'cancelled').forEach(x => {
+    const first = (x.topic_id || x.id) === x.id;
+    feed.push({ t: +new Date(x.created_at), h: `📣 <b>${esc(x.creator)}</b> ${first ? 'posted' : 'added an offer on'} ${esc(x.statement)}${x.answer ? ' (' + esc(x.answer) + ')' : ''} at odds ${Number(x.odds)}` });
+  });
+  takes.forEach(k => {
+    const x = byId[k.bet_id];
+    feed.push({ t: +new Date(k.created_at), h: `🎲 <b>${esc(k.taker)}</b> bet ${k.stake} on ${esc(x.statement)}${x.answer ? ' against ' + esc(x.answer) : ''}` });
+    if (k.winner) feed.push({ t: settleMs(k), h: `🏆 <b>${esc(who(x, k, k.winner))}</b> won ${k.winner === 'creator' ? k.stake : k.payout} on ${esc(x.statement)}` });
+  });
+  D.comments.forEach(c => {
+    const x = byId[c.bet_id];
+    if (x) feed.push({ t: +new Date(c.created_at), h: `💬 <b>${esc(c.name)}</b> commented on ${esc(x.statement)}` });
+  });
+  feed.sort((a, b) => b.t - a.t);
+  $('feed').innerHTML = feed.slice(0, 30).map(f => `<div style="margin:6px 0">${f.h} <span class="small">· ${ago(f.t)}</span></div>`).join('') || '<span class="small">Nothing yet.</span>';
 }
 
 setInterval(() => {
@@ -742,11 +1166,12 @@ setInterval(() => {
 }, 15000);
 
 (async function init() {
-  const c = new URLSearchParams(location.search).get('g');
-  if (c) {
-    await joinByCode(c);
-    history.replaceState(null, '', location.pathname + location.hash);
-  }
+  $('name').value = store.get('wtb_name', '');
+  const params = new URLSearchParams(location.search);
+  const c = params.get('g'), b = parseInt(params.get('bet'));
+  if (b) focusBet = b;
+  if (c) await joinByCode(c);
+  if (c || b) history.replaceState(null, '', location.pathname + location.hash);
   renderGroupBar();
   route();
   renderAll();
